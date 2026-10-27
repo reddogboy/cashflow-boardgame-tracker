@@ -1,0 +1,919 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cashflow Tracker - Get out of the Rat Race</title>
+    
+    <!-- นำเข้า Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- นำเข้า FontAwesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- นำเข้า React -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <!-- นำเข้า Babel สำหรับแปลภาษา React -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <style>
+        body { font-family: 'Inter', system-ui, sans-serif; background-color: #f8fafc; }
+        input[type="number"]::-webkit-inner-spin-button, 
+        input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+        .fade-in { animation: fadeIn 0.2s ease-in-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(-5px); } to { opacity: 1; transform: translateY(0); } }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect } = React;
+
+        // ==========================================
+        // 1. Database: ฐานข้อมูลเกมมาตรฐาน (แก้ไขตามที่คุณระบุเป๊ะ 100%)
+        // ==========================================
+        const PROFESSIONS = [
+            { id: 'janitor', name: 'ภารโรง (Janitor)', salary: 1600, savings: 600, expenses: { taxes: 300, home: 200, school: 0, car: 100, creditCard: 100, retail: 300, bank: 0, perChild: 100 }, liabilities: { home: 20000, school: 0, car: 4000, creditCard: 3000 } },
+            { id: 'mechanic', name: 'ช่างเครื่อง (Mechanic)', salary: 2000, savings: 700, expenses: { taxes: 400, home: 300, school: 0, car: 100, creditCard: 100, retail: 400, bank: 0, perChild: 100 }, liabilities: { home: 31000, school: 0, car: 3000, creditCard: 3000 } },
+            { id: 'truck_driver', name: 'คนขับรถบรรทุก (Truck Driver)', salary: 2500, savings: 800, expenses: { taxes: 500, home: 400, school: 0, car: 100, creditCard: 100, retail: 600, bank: 0, perChild: 200 }, liabilities: { home: 38000, school: 0, car: 4000, creditCard: 3000 } },
+            { id: 'secretary', name: 'เลขาฯ (Secretary)', salary: 2500, savings: 700, expenses: { taxes: 500, home: 400, school: 0, car: 100, creditCard: 100, retail: 600, bank: 0, perChild: 100 }, liabilities: { home: 38000, school: 0, car: 4000, creditCard: 3000 } },
+            { id: 'police', name: 'ตำรวจ (Police Officer)', salary: 3000, savings: 500, expenses: { taxes: 600, home: 400, school: 0, car: 100, creditCard: 100, retail: 700, bank: 0, perChild: 200 }, liabilities: { home: 46000, school: 0, car: 5000, creditCard: 3000 } },
+            { id: 'nurse', name: 'พยาบาล (Nurse)', salary: 3100, savings: 500, expenses: { taxes: 600, home: 400, school: 100, car: 100, creditCard: 200, retail: 600, bank: 0, perChild: 200 }, liabilities: { home: 47000, school: 6000, car: 5000, creditCard: 4000 } },
+            { id: 'teacher', name: 'ครู (Teacher)', salary: 3300, savings: 400, expenses: { taxes: 500, home: 500, school: 100, car: 100, creditCard: 200, retail: 700, bank: 0, perChild: 200 }, liabilities: { home: 50000, school: 12000, car: 5000, creditCard: 4000 } },
+            { id: 'manager', name: 'ผู้จัดการ (Business MGR)', salary: 4600, savings: 400, expenses: { taxes: 900, home: 700, school: 100, car: 100, creditCard: 200, retail: 1000, bank: 0, perChild: 300 }, liabilities: { home: 75000, school: 12000, car: 6000, creditCard: 4000 } },
+            { id: 'engineer', name: 'วิศวกร (Engineer)', salary: 4900, savings: 400, expenses: { taxes: 1000, home: 700, school: 100, car: 200, creditCard: 200, retail: 1000, bank: 0, perChild: 200 }, liabilities: { home: 75000, school: 12000, car: 7000, creditCard: 5000 } },
+            { id: 'lawyer', name: 'ทนายความ (Lawyer)', salary: 7500, savings: 2000, expenses: { taxes: 1800, home: 1100, school: 300, car: 200, creditCard: 200, retail: 1500, bank: 0, perChild: 400 }, liabilities: { home: 115000, school: 78000, car: 11000, creditCard: 7000 } },
+            { id: 'airline_pilot', name: 'นักบิน (Airline Pilot)', salary: 9500, savings: 2500, expenses: { taxes: 2000, home: 1000, school: 0, car: 300, creditCard: 700, retail: 2000, bank: 0, perChild: 400 }, liabilities: { home: 90000, school: 0, car: 15000, creditCard: 22000 } },
+            { id: 'doctor', name: 'แพทย์ (Doctor)', salary: 13200, savings: 3500, expenses: { taxes: 3200, home: 1900, school: 700, car: 300, creditCard: 200, retail: 2000, bank: 0, perChild: 700 }, liabilities: { home: 202000, school: 150000, car: 19000, creditCard: 10000 } }
+        ].sort((a, b) => a.salary - b.salary);
+
+        const PAPER_ASSETS = ["ON2U", "MYT4U", "OK4U", "GRO4US", "ทองคำ"];
+        const RE_ASSETS = ["บ้าน 2Br/1Ba", "บ้าน 3Br/2Ba", "คอนโด 2Br/1Ba", "Apartment 12 unit", "Apartment 24 unit", "Apartment 60 unit", "Duplex", "4-plex", "8-plex", "Pizza Franchise", "Limited Partner", "Automated Business", "Car wash"];
+
+        const INITIAL_GAME_STATE = {
+            profession: null, 
+            cash: 0,
+            children: 0,
+            bankLoanAmount: 0, 
+            assets: { stocks: [], realEstate: [] },
+            liabilities: {}, // จะถูกก๊อปปี้ตอนเลือกอาชีพ
+            isFastTrack: false
+        };
+
+        // ==========================================
+        // Utils & Smart Parsers
+        // ==========================================
+        const formatMoney = (amount) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0 }).format(amount || 0);
+        const generateId = () => Math.random().toString(36).substr(2, 9);
+        
+        // Smart Parse: แปลงค่า input เป็นตัวเลข (+, -, % หรือเลขเพียวๆ)
+        const parseSmartInput = (inputStr, base) => {
+            if (!inputStr) return NaN;
+            let str = String(inputStr).trim();
+            if (str === '') return NaN;
+
+            if (str.startsWith('+') && str.endsWith('%')) {
+                const pct = parseFloat(str.replace('+', '').replace('%', ''));
+                return base + (base * (pct / 100));
+            } else if (str.startsWith('-') && str.endsWith('%')) {
+                 const pct = parseFloat(str.replace('-', '').replace('%', ''));
+                return base - (base * (pct / 100));
+            } else if (str.startsWith('+')) {
+                const amt = parseFloat(str.replace('+', '').replace('$', ''));
+                return base + amt;
+            } else if (str.startsWith('-')) {
+                const amt = parseFloat(str.replace('-', '').replace('$', ''));
+                return base - amt;
+            }
+            return parseFloat(str); 
+        };
+
+        // ==========================================
+        // 2. Main Application Component
+        // ==========================================
+        function App() {
+            // ระบบ Persistence: จำค่าลง LocalStorage
+            const [gameState, setGameState] = useState(() => {
+                try {
+                    const saved = localStorage.getItem('cashflow_v5_strict');
+                    return saved ? JSON.parse(saved) : INITIAL_GAME_STATE;
+                } catch { return INITIAL_GAME_STATE; }
+            });
+
+            const [toastMsg, setToastMsg] = useState('');
+            const [confirmDialog, setConfirmDialog] = useState(null); 
+            const [actionModal, setActionModal] = useState(null); 
+            
+            // State สำหรับคุม Input ใน Modal
+            const [modalInput, setModalInput] = useState({ amount: '', price: '', shares: '', desc: '' });
+
+            useEffect(() => {
+                localStorage.setItem('cashflow_v5_strict', JSON.stringify(gameState));
+            }, [gameState]);
+
+            const showToast = (msg) => {
+                setToastMsg(msg);
+                setTimeout(() => setToastMsg(''), 3000);
+            };
+
+            const openModal = (modalData) => {
+                setActionModal(modalData);
+                setModalInput({
+                    amount: '',
+                    price: '',
+                    shares: modalData?.type === 'sell_stock' ? modalData.payload.shares : '',
+                    desc: ''
+                });
+            };
+
+            // --- คำนวณรายรับ รายจ่าย (Derived State) ---
+            const prof = gameState.profession;
+            const hasProfession = prof !== null;
+
+            const salary = prof ? prof.salary : 0;
+            const passiveIncome = gameState.assets.realEstate.reduce((sum, re) => sum + Number(re.cashflow), 0);
+            const totalIncome = salary + passiveIncome;
+            
+            // หนี้ผูกกับรายจ่าย: ถ้ายอดหนี้เหลือ 0 ค่าผ่อนจะเป็น 0
+            const taxes = prof ? prof.expenses.taxes : 0;
+            const homeExp = gameState.liabilities.home > 0 ? prof.expenses.home : 0;
+            const schoolExp = gameState.liabilities.school > 0 ? prof.expenses.school : 0;
+            const carExp = gameState.liabilities.car > 0 ? prof.expenses.car : 0;
+            const ccExp = gameState.liabilities.creditCard > 0 ? prof.expenses.creditCard : 0;
+            const retailExp = prof ? prof.expenses.retail : 0; 
+            
+            const totalChildExp = gameState.children * (prof ? prof.expenses.perChild : 0);
+            const bankLoanExp = (gameState.bankLoanAmount || 0) * 0.1; // ดอกเบี้ย 10%
+
+            const totalExpenses = taxes + homeExp + schoolExp + carExp + ccExp + retailExp + totalChildExp + bankLoanExp;
+            const monthlyCashflow = totalIncome - totalExpenses;
+            const isFastTrackReady = passiveIncome > totalExpenses && totalExpenses > 0 && !gameState.isFastTrack;
+
+            // ==========================================
+            // Event Handlers (กลไกเกม)
+            // ==========================================
+            const handleSelectProfession = (profId) => {
+                if(profId === '') return;
+                const selected = PROFESSIONS.find(p => p.id === profId);
+                setGameState(prev => ({
+                    ...INITIAL_GAME_STATE, 
+                    profession: selected,
+                    cash: selected.savings,
+                    liabilities: { ...selected.liabilities }
+                }));
+                showToast(`เริ่มเกมด้วยอาชีพ: ${selected.name}`);
+            };
+
+            const handleRandomProfession = () => {
+                const randomProf = PROFESSIONS[Math.floor(Math.random() * PROFESSIONS.length)];
+                handleSelectProfession(randomProf.id);
+            };
+
+            const handlePayday = () => {
+                if (!hasProfession) return;
+                setGameState(prev => ({ ...prev, cash: prev.cash + monthlyCashflow }));
+                showToast(`รับ Payday สำเร็จ: ${formatMoney(monthlyCashflow)}`);
+            };
+
+            const handleAddChild = () => {
+                if (gameState.children < 3) {
+                    setGameState(prev => ({ ...prev, children: prev.children + 1 }));
+                    showToast('เพิ่มจำนวนลูก 1 คน');
+                } else {
+                    showToast('ในเกมจำกัดลูกสูงสุด 3 คนครับ!');
+                }
+            };
+
+            // ธุรกรรมจิปาถะ (รับ/จ่าย ครั้งเดียว)
+            const executeOneOffTransaction = (e) => {
+                e.preventDefault();
+                const type = actionModal.payload;
+                const amount = Number(modalInput.amount);
+                const desc = modalInput.desc || 'รายการจิปาถะ';
+
+                setGameState(prev => ({
+                    ...prev, 
+                    cash: type === 'income' ? prev.cash + amount : prev.cash - amount
+                }));
+                setActionModal(null);
+                showToast(`${type === 'income' ? 'รับเงิน' : 'จ่ายเงิน'} [${desc}]: ${formatMoney(amount)}`);
+            };
+
+            // จ่ายปลดหนี้สิน (แบบ Strict กฎต้นฉบับ โปะก้อนเดียวจบ)
+            const executePayDebt = (e) => {
+                e.preventDefault();
+                const { debtType, label, currentDebt } = actionModal.payload;
+                
+                if(currentDebt > gameState.cash) {
+                    return alert('เงินสดในมือของคุณไม่พอจ่ายหนี้ก้อนนี้นะครับ!');
+                }
+
+                setGameState(prev => ({
+                    ...prev,
+                    cash: prev.cash - currentDebt,
+                    liabilities: { ...prev.liabilities, [debtType]: 0 } // ปิดยอดเป็น 0
+                }));
+                setActionModal(null);
+                showToast(`ปิดหนี้ ${label} สำเร็จร้อยเปอร์เซ็นต์!`);
+            };
+
+            // ซื้อหุ้น/ทอง
+            const handleAddStock = (e) => {
+                e.preventDefault();
+                const fd = new FormData(e.target);
+                const symbol = fd.get('symbol').toUpperCase();
+                const shares = Number(fd.get('shares'));
+                const costPerShare = Number(fd.get('costPerShare'));
+                
+                if(!symbol || shares <= 0) return;
+
+                setGameState(prev => {
+                    const existingIdx = prev.assets.stocks.findIndex(s => s.symbol === symbol);
+                    let newStocks = [...prev.assets.stocks];
+                    
+                    if (existingIdx >= 0) {
+                        const existing = newStocks[existingIdx];
+                        const totalShares = existing.shares + shares;
+                        const totalCost = existing.totalCost + (shares * costPerShare);
+                        newStocks[existingIdx] = { ...existing, shares: totalShares, totalCost: totalCost, costPerShare: totalCost / totalShares };
+                    } else {
+                        newStocks.push({ id: generateId(), symbol, shares, costPerShare, totalCost: shares * costPerShare });
+                    }
+                    return { ...prev, assets: { ...prev.assets, stocks: newStocks }, cash: prev.cash - (shares * costPerShare) };
+                });
+                showToast(`ซื้อ ${symbol} สำเร็จ`);
+                e.target.reset();
+            };
+
+            // ขายหุ้น/ทอง
+            const executeSellStock = (stockId, sharesToSell, inputPrice) => {
+                const stock = gameState.assets.stocks.find(s => s.id === stockId);
+                if(!stock || sharesToSell > stock.shares) return alert("จำนวนที่ขายมากกว่าที่มีอยู่!");
+
+                const sellPricePerShare = parseSmartInput(inputPrice, stock.costPerShare);
+                if(isNaN(sellPricePerShare)) return alert("รูปแบบราคาไม่ถูกต้อง");
+
+                const totalRevenue = sharesToSell * sellPricePerShare;
+                const totalCost = sharesToSell * stock.costPerShare;
+                const profit = totalRevenue - totalCost;
+
+                setGameState(prev => {
+                    let newStocks = prev.assets.stocks.map(s => {
+                        if(s.id === stockId) return { ...s, shares: s.shares - sharesToSell, totalCost: s.totalCost - totalCost };
+                        return s;
+                    }).filter(s => s.shares > 0); 
+
+                    return { ...prev, assets: { ...prev.assets, stocks: newStocks }, cash: prev.cash + totalRevenue };
+                });
+                setActionModal(null);
+                showToast(`ขาย ${stock.symbol} รับเงินสด ${formatMoney(totalRevenue)} (กำไร ${formatMoney(profit)})`);
+            };
+
+            // ซื้ออสังหา
+            const handleAddRealEstate = (e) => {
+                e.preventDefault();
+                const fd = new FormData(e.target);
+                const name = fd.get('name');
+                const downPayment = Number(fd.get('downPayment'));
+                const cost = Number(fd.get('cost'));
+                const cashflow = Number(fd.get('cashflow'));
+                
+                if(!name || cost <= 0) return;
+                const mortgage = cost - downPayment; 
+                
+                setGameState(prev => ({
+                    ...prev,
+                    assets: { ...prev.assets, realEstate: [...prev.assets.realEstate, { id: generateId(), name, downPayment, cost, mortgage, cashflow }] },
+                    cash: prev.cash - downPayment 
+                }));
+                showToast(`ซื้ออสังหาฯ: ${name} เรียบร้อย`);
+                e.target.reset();
+            };
+
+            // ขายอสังหา
+            const executeSellRealEstate = (reId, inputPrice) => {
+                const re = gameState.assets.realEstate.find(r => r.id === reId);
+                if(!re) return;
+                const sellPrice = parseSmartInput(inputPrice, re.cost);
+                if(isNaN(sellPrice)) return alert("รูปแบบราคาไม่ถูกต้อง");
+
+                const netCash = sellPrice - re.mortgage; 
+                setGameState(prev => ({ 
+                    ...prev, 
+                    assets: { ...prev.assets, realEstate: prev.assets.realEstate.filter(r => r.id !== reId) }, 
+                    cash: prev.cash + netCash 
+                }));
+                setActionModal(null);
+                showToast(`ขาย ${re.name} สำเร็จ! รับเงินสดสุทธิ ${formatMoney(netCash)}`);
+            };
+
+            const handleReset = () => {
+                setConfirmDialog({
+                    title: 'เริ่มเกมใหม่?',
+                    message: 'คุณต้องการล้างข้อมูลทั้งหมดแล้วเริ่มเกมใหม่ใช่หรือไม่?',
+                    onConfirm: () => setGameState(INITIAL_GAME_STATE)
+                });
+            };
+
+            // ==========================================
+            // 3. UI Modals (พร้อม Real-time Preview)
+            // ==========================================
+            const renderActionModal = () => {
+                if (!actionModal) return null;
+                const { type, payload } = actionModal;
+
+                return (
+                    <div className="fixed inset-0 bg-slate-900/80 z-50 flex items-center justify-center p-4 fade-in">
+                        <div className="bg-white rounded-xl shadow-2xl max-w-md w-full overflow-hidden">
+                            <div className="bg-slate-800 text-white px-6 py-4 flex justify-between items-center">
+                                <h3 className="text-lg font-bold">
+                                    {type === 'sell_stock' && '📈 ขายหุ้น / ทองคำ'}
+                                    {type === 'sell_re' && '🏢 ขายอสังหาริมทรัพย์'}
+                                    {type === 'edit_re_cashflow' && '✏️ แก้ไข Cashflow'}
+                                    {type === 'bank_loan' && '🏦 เงินกู้ธนาคาร'}
+                                    {type === 'pay_debt' && '💸 จ่ายปลดหนี้ (ตามกติกาหลัก)'}
+                                    {type === 'one_off_tx' && (payload === 'income' ? '💰 รับเงินพิเศษ' : '💳 จ่ายเงินพิเศษ')}
+                                </h3>
+                                <button onClick={() => setActionModal(null)} className="text-slate-300 hover:text-white"><i className="fas fa-times"></i></button>
+                            </div>
+                            <div className="p-6">
+                                
+                                {type === 'one_off_tx' && (
+                                    <form onSubmit={executeOneOffTransaction}>
+                                        <div className="mb-4 bg-slate-50 p-3 rounded text-sm text-slate-700 border border-slate-200">
+                                            บันทึกนี้จะ <strong>{payload === 'income' ? 'บวกเพิ่ม' : 'หักออก'}</strong> จากเงินสดในมือโดยตรง (ไม่เกี่ยวกับรายได้ Passive ต่อเดือน)
+                                        </div>
+                                        <div className="mb-4">
+                                            <label className="block text-sm font-bold text-slate-700 mb-1">คำอธิบาย</label>
+                                            <input type="text" value={modalInput.desc} onChange={e => setModalInput({...modalInput, desc: e.target.value})} placeholder="เช่น ได้เงินจากเพื่อน" className="w-full border rounded p-2" />
+                                        </div>
+                                        <div className="mb-6">
+                                            <label className="block text-sm font-bold text-slate-700 mb-1">จำนวนเงิน</label>
+                                            <input type="number" min="1" value={modalInput.amount} onChange={e => setModalInput({...modalInput, amount: e.target.value})} className="w-full border rounded p-2 text-lg" required />
+                                        </div>
+                                        <button type="submit" className={`w-full text-white font-bold py-2 rounded shadow ${payload === 'income' ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-red-600 hover:bg-red-700'}`}>
+                                            ยืนยันการ{payload === 'income' ? 'รับเงิน' : 'จ่ายเงิน'}
+                                        </button>
+                                    </form>
+                                )}
+
+                                {type === 'pay_debt' && (() => {
+                                    const canAfford = gameState.cash >= payload.currentDebt;
+                                    return (
+                                        <form onSubmit={executePayDebt}>
+                                            <div className="mb-4 bg-orange-50 p-4 rounded-lg text-sm border border-orange-200 text-center">
+                                                <div className="text-slate-600 mb-1">ต้องการปิดหนี้</div>
+                                                <div className="text-lg font-bold text-slate-800 mb-2">{payload.label}</div>
+                                                <div className="text-3xl font-black text-orange-700 mb-4">{formatMoney(payload.currentDebt)}</div>
+                                                <div className="text-xs text-orange-600 bg-orange-100 p-2 rounded">
+                                                    * กติกา: คุณต้องจ่ายปิดหนี้เต็มจำนวนในคราวเดียวเท่านั้น ไม่สามารถทยอยจ่ายได้
+                                                </div>
+                                            </div>
+                                            
+                                            <div className={`mb-6 p-3 rounded text-sm text-center border ${canAfford ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-red-50 border-red-200 text-red-800'}`}>
+                                                เงินสดปัจจุบันของคุณ: <strong>{formatMoney(gameState.cash)}</strong>
+                                                {!canAfford && <div className="font-bold mt-1 text-red-600"><i className="fas fa-ban"></i> เงินสดของคุณไม่เพียงพอ!</div>}
+                                            </div>
+
+                                            <button type="submit" disabled={!canAfford} className={`w-full text-white font-bold py-3 rounded shadow transition-colors ${canAfford ? 'bg-orange-600 hover:bg-orange-700 cursor-pointer' : 'bg-slate-400 cursor-not-allowed opacity-70'}`}>
+                                                {canAfford ? 'ยืนยันการจ่ายปิดหนี้' : 'เงินสดไม่พอจ่าย'}
+                                            </button>
+                                        </form>
+                                    );
+                                })()}
+
+                                {type === 'bank_loan' && (
+                                    <form onSubmit={(e) => { 
+                                        e.preventDefault(); 
+                                        const amt = Number(modalInput.amount) * 1000;
+                                        if (payload === 'pay' && amt > gameState.bankLoanAmount) return alert('จ่ายเกินยอดหนี้!');
+                                        if (payload === 'pay' && amt > gameState.cash) return alert('เงินสดไม่พอ!');
+                                        setGameState(prev => ({ ...prev, bankLoanAmount: prev.bankLoanAmount + (payload === 'pay' ? -amt : amt), cash: prev.cash + (payload === 'pay' ? -amt : amt) }));
+                                        setActionModal(null);
+                                    }}>
+                                        <div className="mb-4 bg-slate-50 p-3 rounded text-sm border border-slate-200">
+                                            การ{payload === 'borrow' ? 'กู้' : 'คืน'}แบงค์ต้องทำเป็นทวีคูณของ <strong>$1,000</strong> เสมอ <br/>
+                                            {payload === 'pay' && <span>ยอดกู้ปัจจุบัน: <strong className="text-red-600">{formatMoney(gameState.bankLoanAmount)}</strong></span>}
+                                        </div>
+                                        <div className="mb-6">
+                                            <label className="block text-sm font-bold text-slate-700 mb-1">ต้องการ{payload === 'borrow' ? 'กู้' : 'คืน'}กี่เท่าของ $1,000 (ใส่ตัวเลข X)</label>
+                                            <div className="flex items-center gap-2">
+                                                <span className="font-bold text-slate-500">$1,000 x </span>
+                                                <input type="number" min="1" value={modalInput.amount} onChange={e => setModalInput({...modalInput, amount: e.target.value})} placeholder="เช่น 5 (คือ $5,000)" className="flex-1 border rounded p-2 text-lg" required />
+                                            </div>
+                                        </div>
+                                        <button type="submit" className={`w-full text-white font-bold py-2 rounded shadow ${payload === 'borrow' ? 'bg-slate-800 hover:bg-slate-700' : 'bg-emerald-600 hover:bg-emerald-700'}`}>
+                                            ยืนยันการ{payload === 'borrow' ? 'ขอกู้' : 'จ่ายคืน'}
+                                        </button>
+                                    </form>
+                                )}
+
+                                {type === 'sell_stock' && (() => {
+                                    const currentShares = Number(modalInput.shares) || 0;
+                                    const currentPriceStr = modalInput.price;
+                                    const parsedPrice = parseSmartInput(currentPriceStr, payload.costPerShare);
+                                    const isValidPrice = !isNaN(parsedPrice) && currentPriceStr.trim() !== '';
+                                    const totalRevenue = isValidPrice ? currentShares * parsedPrice : 0;
+                                    const profit = isValidPrice ? totalRevenue - (currentShares * payload.costPerShare) : 0;
+
+                                    return (
+                                        <form onSubmit={(e) => { e.preventDefault(); executeSellStock(payload.id, currentShares, currentPriceStr); }}>
+                                            <div className="mb-4 bg-blue-50 p-3 rounded text-sm text-blue-800 border border-blue-100">
+                                                คุณมี <strong>{payload.symbol}</strong> จำนวน {payload.shares} หน่วย <br/>
+                                                ต้นทุนเฉลี่ย: <strong>{formatMoney(payload.costPerShare)}</strong> / หน่วย
+                                            </div>
+                                            <div className="grid grid-cols-2 gap-3 mb-6">
+                                                <div>
+                                                    <label className="block text-xs font-bold text-slate-700 mb-1">จำนวนที่ขาย</label>
+                                                    <input type="number" max={payload.shares} min="1" value={modalInput.shares} onChange={e => setModalInput({...modalInput, shares: e.target.value})} className="w-full border rounded p-2" required />
+                                                </div>
+                                                <div>
+                                                    <label className="block text-xs font-bold text-slate-700 mb-1">ราคาขายต่อหน่วย</label>
+                                                    <input type="text" placeholder="เช่น 40, +10, หรือ +20%" value={modalInput.price} onChange={e => setModalInput({...modalInput, price: e.target.value})} className="w-full border rounded p-2" required autoComplete="off" />
+                                                </div>
+                                            </div>
+                                            
+                                            {isValidPrice && (
+                                                <div className="mb-4 bg-emerald-50 p-3 rounded-lg border border-emerald-200 fade-in text-sm">
+                                                    <div className="flex justify-between text-slate-600 mb-1"><span>รับเงินสดสุทธิ:</span> <span className="font-bold text-slate-800">{formatMoney(totalRevenue)}</span></div>
+                                                    <div className="flex justify-between items-center">
+                                                        <span className="text-slate-600">กำไร/ขาดทุน:</span> 
+                                                        <span className={`font-black text-base ${profit >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>{profit >= 0 ? '+' : ''}{formatMoney(profit)}</span>
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            <button type="submit" className="w-full bg-blue-600 text-white font-bold py-2 rounded shadow hover:bg-blue-700">ยืนยันการขาย</button>
+                                        </form>
+                                    );
+                                })()}
+
+                                {type === 'sell_re' && (() => {
+                                    const currentPriceStr = modalInput.price;
+                                    const parsedPrice = parseSmartInput(currentPriceStr, payload.cost);
+                                    const isValidPrice = !isNaN(parsedPrice) && currentPriceStr.trim() !== '';
+                                    const netCash = isValidPrice ? parsedPrice - payload.mortgage : 0;
+
+                                    return (
+                                        <form onSubmit={(e) => { e.preventDefault(); executeSellRealEstate(payload.id, currentPriceStr); }}>
+                                            <div className="mb-4 bg-orange-50 p-3 rounded text-sm text-orange-800 border border-orange-100">
+                                                ต้องการขาย <strong>{payload.name}</strong><br/>
+                                                ต้นทุนเดิมที่คุณซื้อมา: <strong>{formatMoney(payload.cost)}</strong><br/>
+                                            </div>
+                                            <div className="mb-6">
+                                                <label className="block text-sm font-bold text-slate-700 mb-1">ราคาขายรวม (เช่น 150000, +50000, +50%)</label>
+                                                <input type="text" value={modalInput.price} onChange={e => setModalInput({...modalInput, price: e.target.value})} className="w-full border rounded p-2 text-lg" required autoComplete="off" />
+                                            </div>
+
+                                            {isValidPrice && (
+                                                <div className="mb-4 bg-emerald-50 p-3 rounded-lg border border-emerald-200 fade-in text-sm">
+                                                    <div className="flex justify-between text-slate-600 mb-1"><span>ราคาขายรวมสุทธิ:</span> <span>{formatMoney(parsedPrice)}</span></div>
+                                                    <div className="flex justify-between text-red-600 mb-1"><span>หักคืนหนี้จำนองธนาคาร:</span> <span>-{formatMoney(payload.mortgage)}</span></div>
+                                                    <hr className="my-2 border-emerald-200"/>
+                                                    <div className="flex justify-between items-center">
+                                                        <span className="font-bold text-slate-700">เงินสดเข้ากระเป๋าคุณ:</span> 
+                                                        <span className={`font-black text-lg ${netCash >= 0 ? 'text-emerald-700' : 'text-red-600'}`}>{formatMoney(netCash)}</span>
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            <button type="submit" className="w-full bg-orange-600 text-white font-bold py-2 rounded shadow hover:bg-orange-700">ยืนยันการขาย</button>
+                                        </form>
+                                    );
+                                })()}
+                                
+                                {type === 'edit_re_cashflow' && (
+                                    <form onSubmit={(e) => { 
+                                        e.preventDefault(); 
+                                        const newCF = Number(modalInput.amount);
+                                        setGameState(prev => ({...prev, assets: {...prev.assets, realEstate: prev.assets.realEstate.map(r => r.id === payload.id ? {...r, cashflow: newCF} : r)}}));
+                                        setActionModal(null); 
+                                    }}>
+                                        <div className="mb-4">
+                                            <label className="block text-sm font-bold text-slate-700 mb-1">กระแสเงินสดใหม่ของ {payload.name}</label>
+                                            <input type="number" value={modalInput.amount} onChange={e => setModalInput({...modalInput, amount: e.target.value})} className="w-full border rounded p-2 text-lg" required />
+                                        </div>
+                                        <button type="submit" className="w-full bg-emerald-600 text-white font-bold py-2 rounded shadow hover:bg-emerald-700">อัปเดตข้อมูล</button>
+                                    </form>
+                                )}
+
+                            </div>
+                        </div>
+                    </div>
+                );
+            };
+
+            // ==========================================
+            // 4. UI Render 
+            // ==========================================
+            return (
+                <div className="min-h-screen pb-20 text-slate-800">
+                    
+                    {toastMsg && (
+                        <div className="fixed top-4 right-4 bg-slate-800 text-white px-4 py-3 rounded-lg shadow-xl z-[60] flex items-center gap-2 fade-in border-l-4 border-emerald-500">
+                            <i className="fas fa-check-circle text-emerald-400"></i> {toastMsg}
+                        </div>
+                    )}
+
+                    {confirmDialog && (
+                        <div className="fixed inset-0 bg-slate-900/80 z-[60] flex items-center justify-center p-4 fade-in">
+                            <div className="bg-white rounded-xl shadow-xl max-w-sm w-full p-6 text-center">
+                                <i className="fas fa-exclamation-triangle text-amber-500 text-4xl mb-4"></i>
+                                <h3 className="text-xl font-bold mb-2">{confirmDialog.title}</h3>
+                                <p className="text-slate-600 mb-6">{confirmDialog.message}</p>
+                                <div className="flex justify-center gap-3">
+                                    <button onClick={() => setConfirmDialog(null)} className="px-4 py-2 bg-slate-200 text-slate-700 rounded font-bold hover:bg-slate-300">ยกเลิก</button>
+                                    <button onClick={() => { confirmDialog.onConfirm(); setConfirmDialog(null); }} className="px-4 py-2 bg-red-600 text-white rounded font-bold hover:bg-red-700">ยืนยัน</button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {renderActionModal()}
+
+                    <header className="bg-emerald-900 text-white sticky top-0 z-40 shadow-lg border-b-4 border-emerald-700">
+                        <div className="max-w-6xl mx-auto px-4 py-3">
+                            <div className="flex justify-between items-center mb-3">
+                                <h1 className="text-xl font-bold flex items-center gap-2">
+                                    <i className="fas fa-money-bill-wave text-emerald-400"></i> Cashflow Tracker
+                                </h1>
+                                <button onClick={handleReset} className="text-sm bg-emerald-800 hover:bg-red-700 px-3 py-1.5 rounded flex items-center gap-1 transition-colors">
+                                    <i className="fas fa-rotate-right"></i> เริ่มเกมใหม่
+                                </button>
+                            </div>
+
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                                <div className="bg-emerald-800/50 p-2 rounded border border-emerald-700/50 relative">
+                                    <div className="text-emerald-200 text-xs mb-1 flex justify-between items-center">
+                                        <span>เงินสด (Cash)</span>
+                                        <div className="flex gap-1">
+                                            <button onClick={() => openModal({type: 'one_off_tx', payload: 'income'})} className="bg-emerald-600 hover:bg-emerald-500 px-1.5 rounded text-[10px]"><i className="fas fa-plus"></i></button>
+                                            <button onClick={() => openModal({type: 'one_off_tx', payload: 'expense'})} className="bg-red-600 hover:bg-red-500 px-1.5 rounded text-[10px]"><i className="fas fa-minus"></i></button>
+                                        </div>
+                                    </div>
+                                    <div className="text-xl font-bold text-white">{formatMoney(gameState.cash)}</div>
+                                </div>
+                                <div className="bg-emerald-800/50 p-2 rounded border border-emerald-700/50">
+                                    <div className="text-emerald-200 text-xs mb-1">รายรับรวม (Income)</div>
+                                    <div className="text-xl font-bold text-emerald-300">{formatMoney(totalIncome)}</div>
+                                </div>
+                                <div className="bg-emerald-800/50 p-2 rounded border border-emerald-700/50">
+                                    <div className="text-emerald-200 text-xs mb-1">รายจ่ายรวม (Expenses)</div>
+                                    <div className="text-xl font-bold text-red-300">{formatMoney(totalExpenses)}</div>
+                                </div>
+                                <button 
+                                    onClick={handlePayday}
+                                    disabled={!hasProfession}
+                                    className={`p-2 rounded font-bold text-lg flex flex-col items-center justify-center transition-all shadow-md ${hasProfession ? 'bg-gradient-to-b from-yellow-400 to-amber-500 text-emerald-950 hover:scale-[1.02] cursor-pointer' : 'bg-slate-700 text-slate-400 opacity-50 cursor-not-allowed'}`}
+                                >
+                                    <span className="flex items-center gap-1"><i className="fas fa-sack-dollar"></i> Payday!</span>
+                                    <span className="text-xs bg-black/10 px-2 rounded-full mt-1">+{formatMoney(monthlyCashflow)}</span>
+                                </button>
+                            </div>
+                        </div>
+                    </header>
+
+                    <main className="max-w-6xl mx-auto px-4 py-6">
+                        
+                        {!hasProfession && (
+                            <div className="bg-white p-8 rounded-xl shadow-lg border border-slate-200 text-center max-w-2xl mx-auto mt-10 fade-in">
+                                <h2 className="text-2xl font-bold text-slate-800 mb-2">เริ่มเกมสนามแข่งหนู (Phase 1)</h2>
+                                <p className="text-slate-500 mb-6">เลือกอาชีพที่คุณจับได้จากการ์ด</p>
+                                
+                                <div className="flex flex-col sm:flex-row justify-center gap-4">
+                                    <select 
+                                        onChange={(e) => handleSelectProfession(e.target.value)}
+                                        className="flex-1 p-3 border border-slate-300 rounded-lg bg-slate-50 font-bold focus:ring-2 focus:ring-emerald-500 outline-none"
+                                        defaultValue=""
+                                    >
+                                        <option value="" disabled>-- เลือกอาชีพ (เรียงตามเงินเดือน) --</option>
+                                        {PROFESSIONS.map(p => (
+                                            <option key={p.id} value={p.id}>{p.name} (เงินเดือน {formatMoney(p.salary)})</option>
+                                        ))}
+                                    </select>
+                                    <button 
+                                        onClick={handleRandomProfession}
+                                        className="bg-slate-800 hover:bg-slate-700 text-white p-3 rounded-lg font-bold flex justify-center items-center gap-2 transition-colors shadow-md"
+                                    >
+                                        <i className="fas fa-dice"></i> สุ่มอาชีพ
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+
+                        {isFastTrackReady && (
+                            <div className="bg-gradient-to-r from-fuchsia-600 to-purple-700 p-8 rounded-2xl shadow-2xl mb-8 text-white flex flex-col md:flex-row items-center justify-between border-4 border-fuchsia-400 fade-in relative overflow-hidden">
+                                <div className="absolute top-0 right-0 opacity-10"><i className="fas fa-trophy text-9xl"></i></div>
+                                <div className="relative z-10 text-center md:text-left mb-4 md:mb-0">
+                                    <h2 className="text-3xl font-black mb-2 tracking-tight">🎉 ยินดีด้วย! คุณพร้อมออกจากสนามแข่งหนูแล้ว</h2>
+                                    <p className="text-lg opacity-90 font-medium">Passive Income ของคุณทะลุรายจ่ายรวมเรียบร้อยแล้ว</p>
+                                </div>
+                                <button onClick={() => { setGameState(prev => ({...prev, isFastTrack: true})); window.scrollTo(0,0); }} className="relative z-10 bg-white text-purple-700 hover:bg-slate-100 font-black text-xl px-8 py-4 rounded-xl shadow-lg hover:scale-105 transition-transform">
+                                    เข้าสู่ Fast Track <i className="fas fa-rocket ml-2"></i>
+                                </button>
+                            </div>
+                        )}
+
+                        {gameState.isFastTrack && (
+                            <div className="bg-white p-10 rounded-xl shadow-lg border-2 border-purple-200 text-center fade-in">
+                                <i className="fas fa-space-shuttle text-6xl text-purple-600 mb-6"></i>
+                                <h2 className="text-3xl font-black text-slate-800 mb-4">ยินดีต้อนรับสู่ลู่ทางด่วน (Fast Track)</h2>
+                                <p className="text-slate-600 text-lg mb-8">คุณเป็นอิสระทางการเงินแล้ว! (หน้ากระดานเฟส 2 กำลังพัฒนา...)</p>
+                                <button onClick={() => setGameState(prev => ({...prev, isFastTrack: false}))} className="text-purple-600 underline font-bold">กลับไปดูหน้ากระดานเฟส 1</button>
+                            </div>
+                        )}
+
+                        {hasProfession && !gameState.isFastTrack && (
+                            <div className="grid lg:grid-cols-12 gap-6 fade-in">
+                                
+                                {/* คอลัมน์ซ้าย: รายรับ และ รายจ่าย */}
+                                <div className="lg:col-span-5 space-y-6">
+                                    
+                                    {/* 1. รายรับ */}
+                                    <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+                                        <div className="bg-emerald-50 px-4 py-3 border-b border-emerald-100 flex items-center justify-between text-emerald-800 font-bold">
+                                            <span><i className="fas fa-arrow-trend-up"></i> 1. รายรับ (Income)</span>
+                                            <span className="bg-emerald-600 text-white px-2 py-0.5 rounded text-sm">{formatMoney(totalIncome)}</span>
+                                        </div>
+                                        <div className="p-4 space-y-4 text-sm">
+                                            <div className="flex justify-between items-center bg-slate-50 p-2 rounded border border-slate-100">
+                                                <span className="text-slate-600">เงินเดือน (อาชีพ <strong className="text-slate-800">{prof.name}</strong>)</span>
+                                                <span className="font-bold text-emerald-700">{formatMoney(salary)}</span>
+                                            </div>
+                                            <div className="pt-2">
+                                                <div className="text-slate-500 font-bold mb-2 text-xs uppercase tracking-widest border-b pb-1">รายได้จากทรัพย์สิน (Passive Income)</div>
+                                                {gameState.assets.realEstate.length === 0 ? (
+                                                    <div className="text-slate-400 italic text-xs text-center py-2">ยังไม่มีอสังหาริมทรัพย์ หรือธุรกิจ</div>
+                                                ) : (
+                                                    <ul className="space-y-1.5">
+                                                        {gameState.assets.realEstate.map(re => (
+                                                            <li key={re.id} className="flex justify-between items-center bg-emerald-50/50 px-3 py-2 rounded border border-emerald-100">
+                                                                <span className="font-medium text-slate-700">{re.name}</span>
+                                                                <div className="flex items-center gap-3">
+                                                                    <span className="text-emerald-700 font-bold">+{formatMoney(re.cashflow)}</span>
+                                                                    <button onClick={() => openModal({type: 'edit_re_cashflow', payload: {id: re.id, name: re.name}}, {amount: re.cashflow})} className="text-slate-400 hover:text-emerald-600"><i className="fas fa-pen text-xs"></i></button>
+                                                                </div>
+                                                            </li>
+                                                        ))}
+                                                    </ul>
+                                                )}
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* 2. รายจ่าย */}
+                                    <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+                                        <div className="bg-red-50 px-4 py-3 border-b border-red-100 flex items-center justify-between text-red-800 font-bold">
+                                            <span><i className="fas fa-calculator"></i> 2. รายจ่าย (Expenses)</span>
+                                            <span className="bg-red-600 text-white px-2 py-0.5 rounded text-sm">{formatMoney(totalExpenses)}</span>
+                                        </div>
+                                        <div className="p-4 text-sm">
+                                            <table className="w-full mb-3">
+                                                <tbody className="divide-y divide-slate-100">
+                                                    <tr>
+                                                        <td className="py-2 text-slate-600">ภาษี (Taxes)</td>
+                                                        <td className="py-2 text-right font-medium text-slate-800">{formatMoney(taxes)}</td>
+                                                    </tr>
+                                                    <tr>
+                                                        <td className="py-2 text-slate-600">ค่าผ่อนบ้าน</td>
+                                                        <td className="py-2 text-right font-medium text-slate-800">
+                                                            {gameState.liabilities.home > 0 ? formatMoney(prof.expenses.home) : <span className="text-emerald-600 text-xs font-bold bg-emerald-50 px-2 py-1 rounded">0 (ปลดหนี้แล้ว)</span>}
+                                                        </td>
+                                                    </tr>
+                                                    <tr>
+                                                        <td className="py-2 text-slate-600">ค่าผ่อน กยศ.</td>
+                                                        <td className="py-2 text-right font-medium text-slate-800">
+                                                            {gameState.liabilities.school > 0 ? formatMoney(prof.expenses.school) : <span className="text-emerald-600 text-xs font-bold bg-emerald-50 px-2 py-1 rounded">0 (ปลดหนี้แล้ว)</span>}
+                                                        </td>
+                                                    </tr>
+                                                    <tr>
+                                                        <td className="py-2 text-slate-600">ค่าผ่อนรถยนต์</td>
+                                                        <td className="py-2 text-right font-medium text-slate-800">
+                                                            {gameState.liabilities.car > 0 ? formatMoney(prof.expenses.car) : <span className="text-emerald-600 text-xs font-bold bg-emerald-50 px-2 py-1 rounded">0 (ปลดหนี้แล้ว)</span>}
+                                                        </td>
+                                                    </tr>
+                                                    <tr>
+                                                        <td className="py-2 text-slate-600">บัตรเครดิต</td>
+                                                        <td className="py-2 text-right font-medium text-slate-800">
+                                                            {gameState.liabilities.creditCard > 0 ? formatMoney(prof.expenses.creditCard) : <span className="text-emerald-600 text-xs font-bold bg-emerald-50 px-2 py-1 rounded">0 (ปลดหนี้แล้ว)</span>}
+                                                        </td>
+                                                    </tr>
+                                                    <tr>
+                                                        <td className="py-2 text-slate-600">ค่าใช้จ่ายอื่นๆ (Retail)</td>
+                                                        <td className="py-2 text-right font-medium text-slate-800">{formatMoney(retailExp)}</td>
+                                                    </tr>
+                                                    <tr className="bg-slate-50/50">
+                                                        <td className="py-2 text-slate-600 flex items-center gap-2">
+                                                            ค่าเลี้ยงดูลูก 
+                                                            <button onClick={handleAddChild} className="bg-slate-200 hover:bg-slate-300 px-1.5 py-0.5 rounded text-[10px] font-bold"><i className="fas fa-plus"></i></button>
+                                                        </td>
+                                                        <td className="py-2 text-right">
+                                                            <span className="text-[10px] text-slate-400 mr-2">({gameState.children} คน)</span>
+                                                            <span className="font-bold text-red-600">{formatMoney(totalChildExp)}</span>
+                                                        </td>
+                                                    </tr>
+                                                    {gameState.bankLoanAmount > 0 && (
+                                                        <tr className="bg-red-50">
+                                                            <td className="py-2 text-red-700 font-bold border-l-2 border-red-500 pl-2">ดอกเบี้ยกู้แบงค์ (10%)</td>
+                                                            <td className="py-2 text-right text-red-700 font-bold">{formatMoney(bankLoanExp)}</td>
+                                                        </tr>
+                                                    )}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* คอลัมน์ขวา: ทรัพย์สิน และ หหนี้สิน */}
+                                <div className="lg:col-span-7 space-y-6">
+                                    
+                                    {/* 3. ทรัพย์สิน */}
+                                    <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+                                        <div className="bg-blue-50 px-4 py-3 border-b border-blue-100 flex items-center text-blue-800 font-bold gap-2">
+                                            <i className="fas fa-chart-pie"></i> 3. ทรัพย์สิน (Assets)
+                                        </div>
+                                        <div className="p-4 space-y-6 text-sm">
+                                            
+                                            {/* หุ้น */}
+                                            <div>
+                                                <h4 className="font-black text-slate-800 mb-3 border-b-2 border-slate-100 pb-1">หุ้น / กองทุน / ทองคำ</h4>
+                                                <datalist id="paper-assets">{PAPER_ASSETS.map(a => <option key={a} value={a} />)}</datalist>
+
+                                                <form onSubmit={handleAddStock} className="flex flex-wrap gap-2 mb-4 items-end bg-slate-50 p-3 rounded-lg border border-slate-200">
+                                                    <div className="flex-1 min-w-[100px]">
+                                                        <label className="text-[10px] text-slate-500 font-bold uppercase block mb-1">ชื่อ</label>
+                                                        <input type="text" name="symbol" list="paper-assets" className="w-full border rounded p-1.5 text-sm uppercase font-bold text-blue-700" required autoComplete="off" />
+                                                    </div>
+                                                    <div className="flex-1 min-w-[80px]">
+                                                        <label className="text-[10px] text-slate-500 font-bold uppercase block mb-1">จำนวน</label>
+                                                        <input type="number" name="shares" min="1" className="w-full border rounded p-1.5 text-sm" required />
+                                                    </div>
+                                                    <div className="flex-1 min-w-[80px]">
+                                                        <label className="text-[10px] text-slate-500 font-bold uppercase block mb-1">ราคา/หน่วย</label>
+                                                        <input type="number" name="costPerShare" min="0.01" step="0.01" className="w-full border rounded p-1.5 text-sm" required />
+                                                    </div>
+                                                    <button type="submit" className="bg-blue-600 text-white rounded px-4 py-1.5 font-bold hover:bg-blue-700 h-[34px]">ซื้อ</button>
+                                                </form>
+                                                
+                                                {gameState.assets.stocks.length > 0 ? (
+                                                    <table className="w-full text-left text-xs">
+                                                        <thead className="bg-slate-100 text-slate-600 uppercase font-bold">
+                                                            <tr>
+                                                                <th className="p-2">รายการ</th>
+                                                                <th className="p-2 text-right">จำนวน</th>
+                                                                <th className="p-2 text-right">ต้นทุน/หน่วย</th>
+                                                                <th className="p-2 text-center">จัดการ</th>
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody className="divide-y divide-slate-100">
+                                                            {gameState.assets.stocks.map(s => (
+                                                                <tr key={s.id} className="hover:bg-blue-50/50">
+                                                                    <td className="p-2 font-black">{s.symbol}</td>
+                                                                    <td className="p-2 text-right">{s.shares.toLocaleString()}</td>
+                                                                    <td className="p-2 text-right text-blue-700 font-bold">{formatMoney(s.costPerShare)}</td>
+                                                                    <td className="p-2 text-center">
+                                                                         <button onClick={() => openModal({type: 'sell_stock', payload: s})} className="bg-red-100 text-red-700 px-3 py-1 rounded-full text-[10px] font-bold">ขาย</button>
+                                                                    </td>
+                                                                </tr>
+                                                            ))}
+                                                        </tbody>
+                                                    </table>
+                                                ) : <div className="text-sm text-slate-400 italic text-center py-2">ยังไม่มีสินทรัพย์กระดาษ</div>}
+                                            </div>
+
+                                            {/* อสังหาฯ */}
+                                            <div className="pt-4 border-t-2 border-slate-100">
+                                                <h4 className="font-black text-slate-800 mb-3 border-b-2 border-slate-100 pb-1">อสังหาริมทรัพย์ / ธุรกิจ</h4>
+                                                <datalist id="re-assets">{RE_ASSETS.map(a => <option key={a} value={a} />)}</datalist>
+
+                                                <form onSubmit={handleAddRealEstate} className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-4 items-end bg-slate-50 p-3 rounded-lg border border-slate-200">
+                                                    <div className="col-span-2 md:col-span-1">
+                                                        <label className="text-[10px] text-slate-500 font-bold uppercase block mb-1">ชื่อ</label>
+                                                        <input type="text" name="name" list="re-assets" className="w-full border rounded p-1.5 text-xs font-bold text-emerald-700" required autoComplete="off"/>
+                                                    </div>
+                                                    <div>
+                                                        <label className="text-[10px] text-slate-500 font-bold uppercase block mb-1">เงินดาวน์</label>
+                                                        <input type="number" name="downPayment" className="w-full border rounded p-1.5 text-xs" required />
+                                                    </div>
+                                                    <div>
+                                                        <label className="text-[10px] text-slate-500 font-bold uppercase block mb-1">ราคาเต็ม</label>
+                                                        <input type="number" name="cost" className="w-full border rounded p-1.5 text-xs" required />
+                                                    </div>
+                                                    <div>
+                                                        <label className="text-[10px] text-slate-500 font-bold uppercase block mb-1">Cashflow</label>
+                                                        <input type="number" name="cashflow" className="w-full border rounded p-1.5 text-xs" required />
+                                                    </div>
+                                                    <button type="submit" className="col-span-2 md:col-span-1 bg-emerald-600 text-white rounded p-1.5 font-bold hover:bg-emerald-700 h-[32px]">ซื้อ</button>
+                                                </form>
+                                                
+                                                {gameState.assets.realEstate.length > 0 ? (
+                                                    <table className="w-full text-left text-xs">
+                                                        <thead className="bg-slate-100 text-slate-600 uppercase font-bold">
+                                                            <tr>
+                                                                <th className="p-2">รายการ</th>
+                                                                <th className="p-2 text-right">เงินดาวน์</th>
+                                                                <th className="p-2 text-right">ต้นทุนรวม</th>
+                                                                <th className="p-2 text-center">จัดการ</th>
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody className="divide-y divide-slate-100">
+                                                            {gameState.assets.realEstate.map(re => (
+                                                                <tr key={re.id} className="hover:bg-emerald-50/50">
+                                                                    <td className="p-2 font-bold">{re.name}</td>
+                                                                    <td className="p-2 text-right">{formatMoney(re.downPayment)}</td>
+                                                                    <td className="p-2 text-right text-emerald-700 font-bold">{formatMoney(re.cost)}</td>
+                                                                    <td className="p-2 text-center">
+                                                                        <button onClick={() => openModal({type: 'sell_re', payload: re})} className="bg-orange-100 text-orange-700 px-3 py-1 rounded-full text-[10px] font-bold">ขาย</button>
+                                                                    </td>
+                                                                </tr>
+                                                            ))}
+                                                        </tbody>
+                                                    </table>
+                                                ) : <div className="text-sm text-slate-400 italic text-center py-2">ยังไม่มีอสังหาริมทรัพย์</div>}
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* 4. หนี้สิน */}
+                                    <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+                                        <div className="bg-orange-50 px-4 py-3 border-b border-orange-100 flex items-center gap-2 text-orange-800 font-bold">
+                                            <i className="fas fa-home"></i> 4. หนี้สิน (Liabilities)
+                                        </div>
+                                        <div className="p-4 text-sm">
+                                            
+                                            <h4 className="font-black text-slate-800 mb-3 text-xs uppercase tracking-widest border-b pb-1">หนี้สินตั้งต้น (กติกา: โปะเต็มจำนวนเท่านั้น)</h4>
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                                                {[
+                                                    { key: 'home', label: 'จดจำนองบ้าน', val: gameState.liabilities.home },
+                                                    { key: 'school', label: 'หนี้ กยศ.', val: gameState.liabilities.school },
+                                                    { key: 'car', label: 'หนี้รถยนต์', val: gameState.liabilities.car },
+                                                    { key: 'creditCard', label: 'บัตรเครดิต', val: gameState.liabilities.creditCard },
+                                                ].map(item => (
+                                                    <div key={item.key} className="flex justify-between items-center bg-slate-50 p-3 rounded-lg border border-slate-100">
+                                                        <div>
+                                                            <span className="text-slate-500 text-xs block">{item.label}</span>
+                                                            <span className={`font-bold text-lg ${item.val > 0 ? 'text-slate-800' : 'text-emerald-600'}`}>
+                                                                {item.val > 0 ? formatMoney(item.val) : 'ปลดหนี้แล้ว!'}
+                                                            </span>
+                                                        </div>
+                                                        {item.val > 0 && (
+                                                            <button onClick={() => openModal({type: 'pay_debt', payload: { debtType: item.key, label: item.label, currentDebt: item.val }})} className="bg-orange-100 hover:bg-orange-200 text-orange-800 px-3 py-1.5 rounded text-xs font-bold transition-colors shadow-sm">
+                                                                จ่ายหนี้
+                                                            </button>
+                                                        )}
+                                                    </div>
+                                                ))}
+                                            </div>
+
+                                            <div className="mt-6 pt-4 border-t-2 border-slate-100">
+                                                <h4 className="font-black text-slate-800 mb-3 text-xs uppercase tracking-widest">หนี้จำนองอสังหาฯ (อัตโนมัติจากการซื้อ)</h4>
+                                                {gameState.assets.realEstate.length === 0 ? (
+                                                    <div className="text-xs text-slate-400 italic">ยังไม่มีหนี้จำนองอสังหาฯ</div>
+                                                ) : (
+                                                    <ul className="space-y-2 text-xs">
+                                                        {gameState.assets.realEstate.map(re => (
+                                                            <li key={re.id} className="flex justify-between items-center bg-white border border-orange-100 px-3 py-2 rounded">
+                                                                <span className="text-slate-600 font-medium">จำนอง: {re.name}</span>
+                                                                <span className="font-bold text-orange-700 text-sm">{formatMoney(re.mortgage)}</span>
+                                                            </li>
+                                                        ))}
+                                                    </ul>
+                                                )}
+                                            </div>
+
+                                            <div className="mt-6 pt-4 border-t-2 border-slate-100">
+                                                <div className="flex justify-between items-center mb-3">
+                                                    <div>
+                                                        <h4 className="font-black text-slate-800 text-xs uppercase tracking-widest">เงินกู้ยืมธนาคาร</h4>
+                                                        <p className="text-[10px] text-slate-500">กู้/คืน ต้องเป็นจำนวนเท่าของ $1,000 เสมอ</p>
+                                                    </div>
+                                                    <span className="font-black text-red-600 bg-red-50 px-3 py-1.5 rounded border border-red-100 text-lg">{formatMoney(gameState.bankLoanAmount)}</span>
+                                                </div>
+                                                <div className="flex gap-2">
+                                                    <button onClick={() => openModal({type: 'bank_loan', payload: 'borrow'})} className="flex-1 bg-slate-800 hover:bg-slate-700 text-white text-xs px-3 py-2 rounded font-bold shadow">
+                                                        <i className="fas fa-hand-holding-usd"></i> ขอกู้เพิ่ม
+                                                    </button>
+                                                    {gameState.bankLoanAmount > 0 && (
+                                                        <button onClick={() => openModal({type: 'bank_loan', payload: 'pay'})} className="flex-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-800 text-xs px-3 py-2 rounded font-bold border border-emerald-300">
+                                                            <i className="fas fa-money-bill-wave"></i> จ่ายคืน
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            </div>
+
+                                        </div>
+                                    </div>
+
+                                </div>
+                            </div>
+                        )}
+                    </main>
+                </div>
+            );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
