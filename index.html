@@ -34,7 +34,7 @@
         const { useState, useEffect } = React;
 
         // ==========================================
-        // 1. Database (อัปเดตฐานข้อมูลอาชีพและสินทรัพย์)
+        // 1. Database & Initial State
         // ==========================================
         const PROFESSIONS = [
             { id: 'janitor', name: 'ภารโรง (Janitor)', salary: 1600, savings: 600, expenses: { taxes: 300, home: 200, school: 0, car: 100, creditCard: 100, retail: 300, bank: 0, perChild: 100 }, liabilities: { home: 20000, school: 0, car: 4000, creditCard: 3000 } },
@@ -63,17 +63,18 @@
             assets: { stocks: [], realEstate: [] },
             liabilities: {}, 
             history: [],
-            fastTrack: { isActive: false, baseIncome: 0, businesses: [], dreamBought: false }
+            fastTrack: { isActive: false, baseIncome: 0, businesses: [] } // ตัดความฝันออกตามกติกาใหม่
         };
 
-        // Utils
+        // ==========================================
+        // Utils & Helpers
+        // ==========================================
         const formatMoney = (amount) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0 }).format(amount || 0);
         const generateId = () => Math.random().toString(36).substr(2, 9);
         
-        // Smart Parse function
         const parseSmartInput = (inputStr, base) => {
             if (!inputStr) return NaN;
-            let str = String(inputStr).trim();
+            let str = String(inputStr).trim().replace(/,/g, ''); 
             if (str === '') return NaN;
             if (str.startsWith('+') && str.endsWith('%')) {
                 const pct = parseFloat(str.replace('+', '').replace('%', ''));
@@ -92,30 +93,75 @@
         };
 
         // ==========================================
+        // UI Component: NumberInput (ระบบใส่ลูกน้ำ)
+        // ==========================================
+        const NumberInput = ({ value, onChange, placeholder, className, required }) => {
+            const displayValue = (value === '' || value === '-' || value === null || value === undefined) 
+                ? (value || '') 
+                : Number(value).toLocaleString('en-US');
+            
+            const handleChange = (e) => {
+                let raw = e.target.value.replace(/,/g, ''); 
+                if (raw === '' || raw === '-') {
+                    onChange(raw);
+                } else if (!isNaN(raw)) {
+                    onChange(Number(raw));
+                }
+            };
+            
+            return (
+                <input 
+                    type="text" 
+                    inputMode="numeric" 
+                    value={displayValue} 
+                    onChange={handleChange} 
+                    placeholder={placeholder} 
+                    className={className} 
+                    required={required} 
+                />
+            );
+        };
+
+        // ==========================================
         // 2. Main Application Component
         // ==========================================
         function App() {
+            // ระบบ Initial State ป้องกัน State พัง (Defensive Initialization)
             const [gameState, setGameState] = useState(() => {
                 try {
-                    const saved = localStorage.getItem('cashflow_v5_pro');
-                    return saved ? JSON.parse(saved) : INITIAL_GAME_STATE;
-                } catch { return INITIAL_GAME_STATE; }
+                    const saved = localStorage.getItem('cashflow_v8_stable'); // เปลี่ยน Key เพื่อล้างไพ่ใหม่
+                    if (saved) {
+                        const parsed = JSON.parse(saved);
+                        // ประกอบร่างข้อมูลใหม่ให้ชัวร์ว่าโครงสร้างครบถ้วน 100%
+                        return {
+                            ...INITIAL_GAME_STATE,
+                            ...parsed,
+                            assets: { ...INITIAL_GAME_STATE.assets, ...(parsed.assets || {}) },
+                            liabilities: { ...INITIAL_GAME_STATE.liabilities, ...(parsed.liabilities || {}) },
+                            fastTrack: { ...INITIAL_GAME_STATE.fastTrack, ...(parsed.fastTrack || {}) },
+                            history: parsed.history || []
+                        };
+                    }
+                } catch (e) {
+                    console.error("State parsing error:", e);
+                }
+                return INITIAL_GAME_STATE;
             });
 
             const [toastMsg, setToastMsg] = useState('');
             const [confirmDialog, setConfirmDialog] = useState(null); 
             const [actionModal, setActionModal] = useState(null); 
-            const [autoLoanPrompt, setAutoLoanPrompt] = useState(null); // State สำหรับระบบบังคับกู้เงิน
+            const [autoLoanPrompt, setAutoLoanPrompt] = useState(null);
+            const [bankruptcyMode, setBankruptcyMode] = useState(false); 
             
-            // Controlled States
             const [stockInput, setStockInput] = useState({ symbol: PAPER_ASSETS[0], shares: '', costPerShare: '' });
             const [reInput, setReInput] = useState({ name: RE_ASSETS[0], downPayment: '', cost: '', cashflow: '' });
             const [sellInput, setSellInput] = useState({ price: '', units: '' }); 
-            const [manualTx, setManualTx] = useState({ desc: '', amount: '' }); 
-            const [customBankLoan, setCustomBankLoan] = useState(''); // ระบบกู้/คืนแบงค์แบบกรอกเอง
+            const [manualTx, setManualTx] = useState({ desc: '', amount: '', cashflow: '' }); 
+            const [customBankLoan, setCustomBankLoan] = useState(''); 
 
             useEffect(() => {
-                localStorage.setItem('cashflow_v5_pro', JSON.stringify(gameState));
+                localStorage.setItem('cashflow_v8_stable', JSON.stringify(gameState));
             }, [gameState]);
 
             const showToast = (msg) => {
@@ -133,7 +179,7 @@
             const openModal = (modalData) => {
                 setActionModal(modalData);
                 setSellInput({ price: '', units: modalData?.payload?.shares || 1 }); 
-                setManualTx({ desc: '', amount: '' });
+                setManualTx({ desc: '', amount: '', cashflow: '' });
             };
 
             const resetGame = () => {
@@ -141,22 +187,21 @@
                     title: 'เริ่มเกมใหม่?',
                     message: 'ข้อมูลทั้งหมดจะถูกลบถาวร ยืนยันหรือไม่?',
                     onConfirm: () => {
-                        localStorage.removeItem('cashflow_v5_pro');
-                        setGameState(INITIAL_GAME_STATE); 
+                        localStorage.removeItem('cashflow_v8_stable');
+                        setGameState(INITIAL_GAME_STATE);
+                        setBankruptcyMode(false);
+                        setConfirmDialog(null); // แก้บั๊กหน้าต่างค้าง
                         showToast('รีเซ็ตเกมเรียบร้อย');
                     }
                 });
             };
 
-            // ==========================================
-            // SYSTEM ARCHITECTURE: Smart Auto-Loan Interceptor
-            // ==========================================
             const executeWithAutoLoan = (cost, txDesc, stateUpdaterCallback) => {
                 if (gameState.cash >= cost) {
-                    stateUpdaterCallback(0); // เงินพอ ไม่ต้องกู้
+                    stateUpdaterCallback(0); 
                 } else {
                     const shortfall = cost - gameState.cash;
-                    const loanNeeded = Math.ceil(shortfall / 1000) * 1000; // ปัดขึ้นทีละ 1000
+                    const loanNeeded = Math.ceil(shortfall / 1000) * 1000; 
                     setAutoLoanPrompt({
                         txDesc, cost, loanNeeded,
                         onConfirm: () => {
@@ -170,7 +215,7 @@
                 }
             };
 
-            // --- คำนวณ (Phase 1) ---
+            // --- การคำนวณแบบ Real-time (Derived State) ---
             const prof = gameState.profession;
             const hasProfession = prof !== null;
 
@@ -192,10 +237,10 @@
             
             const isFastTrackReady = p1PassiveIncome >= p1TotalExpenses && p1TotalExpenses > 0 && !gameState.fastTrack.isActive;
 
-            // --- คำนวณ (Phase 2) ---
+            // กฎใหม่: ชนะเกมทันทีเมื่อธุรกิจใหม่ทำรายได้รวมเกิน 50,000
             const ftBusinessIncome = gameState.fastTrack.businesses.reduce((sum, b) => sum + Number(b.cashflow), 0);
             const ftTotalIncome = gameState.fastTrack.baseIncome + ftBusinessIncome; 
-            const hasWonGame = gameState.fastTrack.isActive && (gameState.fastTrack.dreamBought || ftBusinessIncome >= 50000);
+            const hasWonGame = gameState.fastTrack.isActive && (ftBusinessIncome >= 50000);
 
             // ==========================================
             // Event Handlers
@@ -206,7 +251,7 @@
                 setGameState(prev => ({
                     ...INITIAL_GAME_STATE, 
                     profession: selected,
-                    cash: selected.savings, // เงินออมตั้งต้นกลายเป็นเงินสด
+                    cash: selected.savings, 
                     liabilities: { ...selected.liabilities }
                 }));
                 showToast(`เริ่มเกม: ${selected.name}`);
@@ -229,32 +274,24 @@
                         addHistory('รับ Payday', p1MonthlyCashflow, 'income');
                         showToast(`รับ Payday: ${formatMoney(p1MonthlyCashflow)}`);
                     } else {
-                        // กรณี Payday ติดลบ (รายจ่าย > รายรับ) -> ต้องใช้เงินสดจ่ายส่วนต่าง -> ถ้าเงินไม่พอต้องบังคับกู้
                         const deficit = Math.abs(p1MonthlyCashflow);
-                        executeWithAutoLoan(deficit, 'ชำระกระแสเงินสดติดลบ (Payday)', (loanAmount) => {
-                            setGameState(prev => ({
-                                ...prev, 
-                                cash: prev.cash + loanAmount - deficit,
-                                bankLoanAmount: prev.bankLoanAmount + loanAmount
-                            }));
-                            if (loanAmount > 0) addHistory('กู้เงินธนาคาร (อุดรอยรั่ว Payday)', loanAmount, 'income');
+                        if (gameState.cash >= deficit) {
+                            setGameState(prev => ({ ...prev, cash: prev.cash - deficit }));
                             addHistory('จ่ายส่วนต่าง Payday ติดลบ', deficit, 'expense');
                             showToast(`จ่าย Payday ติดลบ: -${formatMoney(deficit)}`);
-                        });
+                        } else {
+                            // เงินสดไม่พอจ่ายส่วนต่าง = เข้าสู่สถานะล้มละลายทันที
+                            setBankruptcyMode(true);
+                        }
                     }
                 }
             };
 
-            // ---- Life Events ----
             const handleBuyMLM = () => {
-                if(gameState.mlmCount >= 2) return setConfirmDialog({ title: 'ผิดพลาด', message: 'ลงทุน MLM ได้สูงสุด 2 ธุรกิจเท่านั้น', onConfirm: () => {} });
-                
+                if(gameState.mlmCount >= 2) return setConfirmDialog({ title: 'ผิดพลาด', message: 'ลงทุน MLM ได้สูงสุด 2 ธุรกิจเท่านั้น', onConfirm: null });
                 executeWithAutoLoan(500, 'ลงทุนธุรกิจ MLM', (loanAmount) => {
                     setGameState(prev => ({
-                        ...prev, 
-                        cash: prev.cash + loanAmount - 500, 
-                        bankLoanAmount: prev.bankLoanAmount + loanAmount,
-                        mlmCount: prev.mlmCount + 1
+                        ...prev, cash: prev.cash + loanAmount - 500, bankLoanAmount: prev.bankLoanAmount + loanAmount, mlmCount: prev.mlmCount + 1
                     }));
                     if(loanAmount > 0) addHistory('กู้เงินธนาคาร', loanAmount, 'income');
                     addHistory('ลงทุนเปิดสายงาน MLM', 500, 'expense');
@@ -286,7 +323,6 @@
                 });
             };
 
-            // ---- Management ----
             const updateChildren = (change) => {
                 const newVal = gameState.children + change;
                 if(newVal >= 0 && newVal <= 3) setGameState(prev => ({...prev, children: newVal}));
@@ -316,10 +352,10 @@
                 }
             };
 
-            const handleBankLoanAction = (actionType) => {
-                const amt = Number(customBankLoan);
+            const handleBankLoanAction = (actionType, overrideAmount = null) => {
+                const amt = overrideAmount !== null ? overrideAmount : Number(customBankLoan);
                 if (!amt || isNaN(amt) || amt <= 0 || amt % 1000 !== 0) {
-                    return setConfirmDialog({ title: 'ข้อมูลไม่ถูกต้อง', message: 'กรุณาระบุจำนวนเงินกู้ให้เป็นจำนวนเท่าของ 1,000 (เช่น 1000, 2000, 5000)', onConfirm: () => {} });
+                    return setConfirmDialog({ title: 'ข้อมูลไม่ถูกต้อง', message: 'กรุณาระบุจำนวนเงินกู้ให้เป็นจำนวนเท่าของ 1,000 (เช่น 1000, 2000, 5000)', onConfirm: null });
                 }
 
                 if (actionType === 'borrow') {
@@ -328,12 +364,9 @@
                     setCustomBankLoan('');
                     showToast(`กู้เงินสำเร็จ ${formatMoney(amt)}`);
                 } else if (actionType === 'repay') {
-                    if (gameState.bankLoanAmount < amt) {
-                        return setConfirmDialog({ title: 'ยอดหนี้ไม่ถึง', message: 'คุณระบุยอดคืนมากกว่าหนี้ที่มีอยู่', onConfirm: () => {} });
-                    }
-                    if (gameState.cash < amt) {
-                        return setConfirmDialog({ title: 'เงินสดไม่พอ', message: 'คุณมีเงินสดไม่พอคืนธนาคาร', onConfirm: () => {} });
-                    }
+                    if (gameState.bankLoanAmount < amt) return setConfirmDialog({ title: 'ยอดหนี้ไม่ถึง', message: 'คุณระบุยอดคืนมากกว่าหนี้ที่มีอยู่', onConfirm: null });
+                    if (gameState.cash < amt) return setConfirmDialog({ title: 'เงินสดไม่พอ', message: 'คุณมีเงินสดไม่พอคืนธนาคาร', onConfirm: null });
+                    
                     setGameState(p => ({...p, bankLoanAmount: p.bankLoanAmount - amt, cash: p.cash - amt}));
                     addHistory('คืนเงินธนาคาร', amt, 'expense');
                     setCustomBankLoan('');
@@ -342,6 +375,15 @@
             };
 
             const handlePayDebt = (debtType, currentDebt, label) => {
+                if (bankruptcyMode) {
+                    // หากอยู่ในโหมดล้มละลาย จะบังคับจ่ายจากเงินสดตรงๆ ห้ามกู้
+                    setGameState(prev => ({
+                        ...prev, cash: prev.cash - currentDebt, liabilities: { ...prev.liabilities, [debtType]: 0 }
+                    }));
+                    addHistory(`ปิดหนี้: ${label} (ล้มละลาย)`, currentDebt, 'expense');
+                    return;
+                }
+
                 executeWithAutoLoan(currentDebt, `จ่ายปิดหนี้: ${label}`, (loanAmount) => {
                     setGameState(prev => ({
                         ...prev, cash: prev.cash + loanAmount - currentDebt, bankLoanAmount: prev.bankLoanAmount + loanAmount,
@@ -353,13 +395,12 @@
                 });
             };
 
-            // ---- Assets (หุ้น, อสังหา) ----
+            // ---- Assets Management ----
             const addStock = (e) => {
                 e.preventDefault();
                 const shares = Number(stockInput.shares);
                 const cost = Number(stockInput.costPerShare);
                 const total = shares * cost;
-                
                 executeWithAutoLoan(total, `ซื้อสินทรัพย์ ${stockInput.symbol}`, (loanAmount) => {
                     setGameState(prev => {
                         let newStocks = [...prev.assets.stocks];
@@ -385,7 +426,6 @@
                 const dp = Number(reInput.downPayment);
                 const cost = Number(reInput.cost);
                 const cf = Number(reInput.cashflow);
-
                 executeWithAutoLoan(dp, `ดาวน์อสังหาฯ ${reInput.name}`, (loanAmount) => {
                     setGameState(prev => ({
                         ...prev,
@@ -406,7 +446,7 @@
                 const unitsToSell = Number(sellInput.units);
                 const pricePerShare = parseSmartInput(sellInput.price, item.costPerShare);
                 
-                if (unitsToSell > item.shares) return setConfirmDialog({ title: 'ข้อมูลผิดพลาด', message: 'ระบุจำนวนขายเกินกว่าที่มีอยู่!', onConfirm: () => {} });
+                if (unitsToSell > item.shares) return setConfirmDialog({ title: 'ข้อมูลผิดพลาด', message: 'ระบุจำนวนขายเกินกว่าที่มีอยู่!', onConfirm: null });
                 const totalReceive = unitsToSell * pricePerShare;
 
                 setGameState(prev => {
@@ -441,12 +481,22 @@
                 showToast(`ขายสำเร็จ กำไรสุทธิ ${formatMoney(netProfit)}`);
             };
 
+            const handleSellToBankrupt = (re) => {
+                const received = Math.floor(re.downPayment / 2); // ได้คืนแค่ครึ่งเดียวของเงินดาวน์
+                setGameState(prev => ({
+                    ...prev,
+                    cash: prev.cash + received,
+                    assets: { ...prev.assets, realEstate: prev.assets.realEstate.filter(r => r.id !== re.id) }
+                }));
+                addHistory(`ถูกยึดทรัพย์: ${re.name} (รับ 50% ดาวน์)`, received, 'income');
+            };
+
             const handleEnterFastTrack = () => {
                 const initialFTCash = p1PassiveIncome * 100;
                 setGameState(prev => ({
                     ...prev,
                     cash: prev.cash + initialFTCash,
-                    fastTrack: { isActive: true, baseIncome: 50000 + p1PassiveIncome, businesses: [], dreamBought: false }
+                    fastTrack: { isActive: true, baseIncome: 50000 + p1PassiveIncome, businesses: [] }
                 }));
                 addHistory(`เข้าสู่ลู่ทางด่วน (x100)`, initialFTCash, 'income');
                 window.scrollTo(0,0);
@@ -455,6 +505,109 @@
             // ==========================================
             // 3. UI Modals
             // ==========================================
+            const renderBankruptcyModal = () => {
+                if (!bankruptcyMode) return null;
+
+                const isSaved = p1MonthlyCashflow >= 0;
+                
+                // ตรวจสอบว่ายังมีทางรอดไหม (ยังมีอสังหาให้ขาย หรือ มีเงินพอจ่ายหนี้อะไรได้บ้าง)
+                const canDoSomething = gameState.assets.realEstate.length > 0 || 
+                                       (gameState.bankLoanAmount > 0 && gameState.cash >= 1000) || 
+                                       Object.values(gameState.liabilities).some(d => d > 0 && gameState.cash >= d);
+                
+                const isGameOver = !isSaved && !canDoSomething;
+
+                if (isGameOver) {
+                    return (
+                        <div className="fixed inset-0 bg-slate-950/95 z-[90] flex items-center justify-center p-4 fade-in">
+                            <div className="bg-white rounded-xl shadow-2xl max-w-sm w-full p-8 text-center border-t-8 border-slate-900">
+                                <i className="fas fa-skull-crossbones text-6xl text-slate-800 mb-4"></i>
+                                <h2 className="text-3xl font-black text-rose-700 mb-2">GAME OVER</h2>
+                                <p className="text-slate-600 mb-6 text-sm">คุณล้มละลายโดยสมบูรณ์ ไม่เหลือทรัพย์สินให้ขาย และไม่มีเงินพอจะปลดหนี้ใดๆ ได้อีก ออกจากเกม!</p>
+                                <button onClick={resetGame} className="w-full bg-slate-900 text-white font-bold py-3 rounded-lg shadow-lg hover:bg-slate-800 transition">เริ่มเกมใหม่</button>
+                            </div>
+                        </div>
+                    );
+                }
+
+                return (
+                    <div className="fixed inset-0 bg-rose-950/95 z-[90] flex items-start justify-center p-4 overflow-y-auto fade-in">
+                        <div className="bg-white rounded-xl shadow-2xl max-w-lg w-full mt-10 overflow-hidden border-4 border-rose-600 mb-10">
+                            <div className="bg-rose-600 text-white px-6 py-5 text-center">
+                                <i className="fas fa-gavel text-3xl mb-2"></i>
+                                <h3 className="text-2xl font-black">ศาลล้มละลาย (Bankruptcy)</h3>
+                                <p className="text-rose-100 text-sm opacity-90 mt-1">กระแสเงินสดของคุณติดลบ และเงินสดไม่พอจ่ายส่วนต่าง!</p>
+                            </div>
+                            <div className="p-6">
+                                <div className="flex gap-4 mb-6">
+                                    <div className="flex-1 bg-slate-100 p-3 rounded-lg text-center border border-slate-200">
+                                        <div className="text-xs text-slate-500 font-bold mb-1">เงินสดคงเหลือ</div>
+                                        <div className="text-xl font-black text-slate-800">{formatMoney(gameState.cash)}</div>
+                                    </div>
+                                    <div className={`flex-1 p-3 rounded-lg text-center border ${isSaved ? 'bg-emerald-50 border-emerald-300' : 'bg-rose-50 border-rose-300'}`}>
+                                        <div className="text-xs font-bold mb-1">กระแสเงินสดต่อเดือน</div>
+                                        <div className={`text-2xl font-black ${isSaved ? 'text-emerald-600' : 'text-rose-600'}`}>{formatMoney(p1MonthlyCashflow)}</div>
+                                        <div className="text-[10px] opacity-70 mt-1">(เป้าหมาย: เป็นบวก)</div>
+                                    </div>
+                                </div>
+
+                                <div className="text-sm text-slate-600 mb-4 font-bold bg-amber-50 p-3 rounded border border-amber-200">
+                                    <i className="fas fa-exclamation-circle text-amber-500 mr-1"></i> บังคับขายอสังหาฯ คืนธนาคาร (รับเงินสุทธิแค่ครึ่งเดียวของเงินดาวน์) นำเงินมาปลดหนี้เพื่อลดรายจ่ายให้กระแสเงินสดกลับมาเป็นบวก
+                                </div>
+
+                                {/* 1. ขายอสังหา */}
+                                <div className="mb-6">
+                                    <h4 className="font-bold text-rose-800 border-b border-rose-100 pb-1 mb-2">1. ขายคืนธนาคาร (รับเงินสด 50%)</h4>
+                                    {gameState.assets.realEstate.length === 0 ? <div className="text-xs text-slate-400 italic text-center py-2">ไม่มีอสังหาฯ ให้ขายแล้ว</div> : (
+                                        <ul className="space-y-2">
+                                            {gameState.assets.realEstate.map(re => (
+                                                <li key={re.id} className="bg-slate-50 p-3 rounded border border-slate-200 flex justify-between items-center">
+                                                    <div>
+                                                        <div className="font-bold text-sm text-slate-700">{re.name}</div>
+                                                        <div className="text-[10px] text-slate-500">เงินดาวน์ ${re.downPayment} <i className="fas fa-arrow-right mx-1"></i> ขายทิ้งรับ <span className="text-emerald-600 font-bold">${Math.floor(re.downPayment/2)}</span></div>
+                                                    </div>
+                                                    <button onClick={() => handleSellToBankrupt(re)} className="bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold px-3 py-1.5 rounded shadow">ขายทิ้ง</button>
+                                                </li>
+                                            ))}
+                                        </ul>
+                                    )}
+                                </div>
+
+                                {/* 2. ปลดหนี้ */}
+                                <div className="mb-6">
+                                    <h4 className="font-bold text-emerald-800 border-b border-emerald-100 pb-1 mb-2">2. ปลดหนี้ (ใช้เงินสดที่มี)</h4>
+                                    <ul className="space-y-2">
+                                        {[
+                                            { id: 'home', label: 'บ้าน', debt: gameState.liabilities.home },
+                                            { id: 'school', label: 'กยศ.', debt: gameState.liabilities.school },
+                                            { id: 'car', label: 'รถยนต์', debt: gameState.liabilities.car },
+                                            { id: 'creditCard', label: 'บัตรเครดิต', debt: gameState.liabilities.creditCard },
+                                        ].map(item => item.debt > 0 && (
+                                            <li key={item.id} className="flex justify-between items-center bg-emerald-50 p-2 rounded border border-emerald-100">
+                                                <div><div className="text-xs text-slate-500">หนี้{item.label}</div><div className="font-bold text-slate-800 text-sm">{formatMoney(item.debt)}</div></div>
+                                                <button onClick={() => handlePayDebt(item.id, item.debt, item.label)} disabled={gameState.cash < item.debt} className={`text-xs px-3 py-1.5 rounded font-bold shadow-sm ${gameState.cash >= item.debt ? 'bg-white text-emerald-700 hover:bg-emerald-100 border border-emerald-300' : 'bg-slate-200 text-slate-400 cursor-not-allowed'}`}>จ่ายโปะ</button>
+                                            </li>
+                                        ))}
+                                        
+                                        {/* เงินกู้ธนาคาร (คืนทีละ 1000) */}
+                                        {gameState.bankLoanAmount > 0 && (
+                                            <li className="flex justify-between items-center bg-blue-50 p-2 rounded border border-blue-100 mt-2">
+                                                <div><div className="text-xs text-slate-500">หนี้ธนาคาร</div><div className="font-bold text-slate-800 text-sm">{formatMoney(gameState.bankLoanAmount)}</div></div>
+                                                <button onClick={() => handleBankLoanAction('repay', 1000)} disabled={gameState.cash < 1000} className={`text-xs px-3 py-1.5 rounded font-bold shadow-sm ${gameState.cash >= 1000 ? 'bg-white text-blue-700 hover:bg-blue-100 border border-blue-300' : 'bg-slate-200 text-slate-400 cursor-not-allowed'}`}>คืน $1,000</button>
+                                            </li>
+                                        )}
+                                    </ul>
+                                </div>
+
+                                <button onClick={() => setBankruptcyMode(false)} disabled={!isSaved} className={`w-full py-4 rounded-xl font-black text-lg transition shadow-lg ${isSaved ? 'bg-emerald-500 hover:bg-emerald-600 text-white' : 'bg-slate-200 text-slate-400 cursor-not-allowed'}`}>
+                                    {isSaved ? '🎉 รอดพ้นวิกฤต! กลับสู่เกม' : '🔒 ต้องทำกระแสเงินสดให้เป็นบวก'}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                );
+            };
+
             const renderActionModal = () => {
                 if (!actionModal) return null;
                 const { type, payload } = actionModal;
@@ -467,6 +620,7 @@
                                     {type === 'one_off_tx' && (payload === 'income' ? '💰 บันทึกรายรับ (จิปาถะ)' : '💳 บันทึกรายจ่าย (จิปาถะ)')}
                                     {type === 'sell_stock' && `📈 ขายสินทรัพย์: ${payload.item.symbol}`}
                                     {type === 'sell_re' && `🏠 ขายอสังหาฯ: ${payload.item.name}`}
+                                    {type === 'buy_ft_business' && `💼 ซื้อธุรกิจบนลู่ทางด่วน`}
                                 </h3>
                                 <button type="button" onClick={() => setActionModal(null)} className="text-slate-300 hover:text-white"><i className="fas fa-times"></i></button>
                             </div>
@@ -486,11 +640,43 @@
                                         </div>
                                         <div className="mb-6">
                                             <label className="block text-sm font-bold text-slate-700 mb-1">จำนวนเงิน</label>
-                                            <input type="number" min="1" value={manualTx.amount} onChange={e => setManualTx({...manualTx, amount: e.target.value})} className="w-full border rounded p-3 text-xl font-bold bg-slate-50 outline-none focus:border-blue-500" required />
+                                            <NumberInput value={manualTx.amount} onChange={val => setManualTx({...manualTx, amount: val})} className="w-full border rounded p-3 text-xl font-bold bg-slate-50 outline-none focus:border-blue-500" required />
                                         </div>
                                         <button type="submit" className={`w-full text-white font-bold py-3 rounded-lg shadow-md transition ${payload === 'income' ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-red-600 hover:bg-red-700'}`}>
                                             ยืนยัน{payload === 'income' ? 'รับเงิน' : 'จ่ายเงิน'}
                                         </button>
+                                    </form>
+                                )}
+
+                                {type === 'buy_ft_business' && (
+                                    <form onSubmit={(e) => {
+                                        e.preventDefault();
+                                        const cost = Number(manualTx.amount);
+                                        const cf = Number(manualTx.cashflow);
+                                        if (gameState.cash < cost) {
+                                            return setConfirmDialog({ title: 'เงินสดไม่พอ', message: 'คุณมีเงินสดไม่พอที่จะซื้อธุรกิจนี้!', onConfirm: () => setConfirmDialog(null) });
+                                        }
+                                        setGameState(prev => ({
+                                            ...prev, cash: prev.cash - cost,
+                                            fastTrack: { ...prev.fastTrack, businesses: [...prev.fastTrack.businesses, { id: generateId(), name: manualTx.desc, cost, cashflow: cf }] }
+                                        }));
+                                        addHistory(`ซื้อธุรกิจ FT: ${manualTx.desc}`, cost, 'expense');
+                                        setActionModal(null);
+                                        showToast("ซื้อธุรกิจใหม่สำเร็จ!");
+                                    }}>
+                                        <div className="mb-4">
+                                            <label className="block text-sm font-bold text-slate-700 mb-1">ชื่อธุรกิจ</label>
+                                            <input type="text" value={manualTx.desc} onChange={e => setManualTx({...manualTx, desc: e.target.value})} className="w-full border rounded p-3 bg-slate-50 outline-none focus:border-blue-500" required />
+                                        </div>
+                                        <div className="mb-4">
+                                            <label className="block text-sm font-bold text-slate-700 mb-1">ราคาซื้อ (จ่ายเงินสดก้อนเดียว)</label>
+                                            <NumberInput value={manualTx.amount} onChange={val => setManualTx({...manualTx, amount: val})} className="w-full border rounded p-3 text-xl font-bold bg-slate-50 outline-none focus:border-blue-500" required />
+                                        </div>
+                                        <div className="mb-6">
+                                            <label className="block text-sm font-bold text-slate-700 mb-1">Cashflow ที่ได้ต่อเดือน</label>
+                                            <NumberInput value={manualTx.cashflow} onChange={val => setManualTx({...manualTx, cashflow: val})} className="w-full border rounded p-3 text-xl font-bold bg-emerald-50 text-emerald-700 outline-none focus:border-emerald-500" required />
+                                        </div>
+                                        <button type="submit" className="w-full bg-amber-500 hover:bg-amber-600 text-white font-bold py-3 rounded shadow">ยืนยันการซื้อธุรกิจ</button>
                                     </form>
                                 )}
 
@@ -513,7 +699,7 @@
                                                         <label className="text-xs font-bold text-slate-700">จำนวนที่ขาย</label>
                                                         <button type="button" onClick={() => setSellInput({...sellInput, units: item.shares})} className="text-[10px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded font-bold hover:bg-blue-200">ขายทั้งหมด</button>
                                                     </div>
-                                                    <input type="number" min="1" max={item.shares} value={sellInput.units} onChange={e => setSellInput({...sellInput, units: e.target.value})} className="w-full border rounded p-2 outline-none focus:border-blue-500" required />
+                                                    <NumberInput value={sellInput.units} onChange={val => setSellInput({...sellInput, units: val})} className="w-full border rounded p-2 outline-none focus:border-blue-500" required />
                                                 </div>
                                                 <div>
                                                     <label className="block text-xs font-bold text-slate-700 mb-1">ราคาขาย / หน่วย</label>
@@ -546,7 +732,7 @@
                                             </div>
                                             <div className="mb-4">
                                                 <label className="block text-sm font-bold text-slate-700 mb-1">ราคาขายรวม (Total Price)</label>
-                                                <input type="text" value={sellInput.price} onChange={e => setSellInput({...sellInput, price: e.target.value})} placeholder="เช่น +50000, +20% หรือราคาเต็ม" className="w-full border rounded p-3 outline-none focus:border-blue-500" required />
+                                                <input type="text" value={sellInput.price} onChange={e => setSellInput({...sellInput, price: e.target.value})} placeholder="เช่น 50000, +20% หรือราคาเต็ม" className="w-full border rounded p-3 outline-none focus:border-blue-500" required />
                                             </div>
 
                                             {!isNaN(sellPrc) && sellPrc > 0 && (
@@ -573,45 +759,28 @@
                 <div className="min-h-screen pb-20 text-slate-800">
                     
                     {toastMsg && (
-                        <div className="fixed top-4 right-4 bg-slate-800 text-white px-4 py-3 rounded-lg shadow-xl z-[90] flex items-center gap-2 fade-in border-l-4 border-emerald-500">
+                        <div className="fixed top-4 right-4 bg-slate-800 text-white px-4 py-3 rounded-lg shadow-xl z-[120] flex items-center gap-2 fade-in border-l-4 border-emerald-500">
                             <i className="fas fa-check-circle text-emerald-400"></i> {toastMsg}
                         </div>
                     )}
 
+                    {/* แก้บั๊ก Z-index และปุ่มกดยืนยันของ Confirm Dialog */}
                     {confirmDialog && (
-                        <div className="fixed inset-0 bg-slate-900/80 z-[80] flex items-center justify-center p-4 fade-in">
+                        <div className="fixed inset-0 bg-slate-900/80 z-[130] flex items-center justify-center p-4 fade-in">
                             <div className="bg-white rounded-xl shadow-xl max-w-sm w-full p-6 text-center border-2 border-slate-200">
                                 <h3 className="text-xl font-bold mb-2">{confirmDialog.title}</h3>
                                 <p className="text-slate-600 mb-6">{confirmDialog.message}</p>
                                 <div className="flex justify-center gap-3">
-                                    <button onClick={() => setConfirmDialog(null)} className="flex-1 py-3 bg-slate-100 hover:bg-slate-200 font-bold rounded-lg transition">ปิด</button>
+                                    <button onClick={() => setConfirmDialog(null)} className="flex-1 py-3 bg-slate-100 hover:bg-slate-200 font-bold rounded-lg transition text-slate-700">ปิด / ยกเลิก</button>
+                                    {confirmDialog.onConfirm && (
+                                        <button onClick={confirmDialog.onConfirm} className="flex-1 py-3 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-lg shadow transition">ยืนยัน</button>
+                                    )}
                                 </div>
                             </div>
                         </div>
                     )}
 
-                    {/* Auto-Loan Prompt Modal */}
-                    {autoLoanPrompt && (
-                        <div className="fixed inset-0 bg-slate-900/90 z-[85] flex items-center justify-center p-4 fade-in">
-                            <div className="bg-white rounded-xl shadow-2xl max-w-sm w-full p-6 border-t-8 border-rose-600">
-                                <div className="text-rose-600 text-4xl mb-4 text-center"><i className="fas fa-exclamation-triangle"></i></div>
-                                <h3 className="text-xl font-black mb-2 text-center text-slate-800">เงินสดไม่พอจ่าย!</h3>
-                                <p className="text-slate-600 mb-4 text-center text-sm">การทำรายการ <strong>{autoLoanPrompt.txDesc}</strong> ต้องใช้เงิน {formatMoney(autoLoanPrompt.cost)} <br/>(คุณขาดเงินอีก {formatMoney(autoLoanPrompt.cost - gameState.cash)})</p>
-                                
-                                <div className="bg-rose-50 border border-rose-200 p-4 rounded-lg mb-6">
-                                    <div className="text-xs text-rose-800 font-bold mb-1">ระบบคำนวณยอดกู้ขั้นต่ำให้แล้ว:</div>
-                                    <div className="text-2xl font-black text-rose-600 text-center mb-1">+{formatMoney(autoLoanPrompt.loanNeeded)}</div>
-                                    <div className="text-[10px] text-rose-500 text-center">(บังคับกู้เป็นจำนวนทวีคูณของ 1,000)</div>
-                                </div>
-
-                                <div className="flex gap-3">
-                                    <button onClick={autoLoanPrompt.onCancel} className="flex-1 py-3 bg-slate-100 hover:bg-slate-200 font-bold rounded-lg transition text-slate-600">ยกเลิกรายการ</button>
-                                    <button onClick={autoLoanPrompt.onConfirm} className="flex-1 py-3 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-lg shadow transition">กู้เงิน & ทำต่อ</button>
-                                </div>
-                            </div>
-                        </div>
-                    )}
-
+                    {renderBankruptcyModal()}
                     {renderActionModal()}
 
                     <header className={`sticky top-0 z-40 shadow-lg border-b-4 ${gameState.fastTrack.isActive ? 'fast-track-gradient border-purple-500 text-white' : 'bg-slate-900 border-slate-700 text-white'}`}>
@@ -679,7 +848,7 @@
                                 <i className="fas fa-crown text-7xl mb-4 text-white drop-shadow-md"></i>
                                 <h1 className="text-4xl font-black mb-2 uppercase tracking-widest">Victory! ชนะเกมแล้ว!</h1>
                                 <p className="text-xl font-bold opacity-90 mb-6">
-                                    {gameState.fastTrack.dreamBought ? "คุณบรรลุเป้าหมาย ซื้อความฝันสำเร็จ 🎉" : `สร้าง Cashflow ใหม่ทะลุ $50,000 ต่อเดือนสำเร็จ (${formatMoney(ftBusinessIncome)}) 🎉`}
+                                    สร้าง Cashflow ใหม่ทะลุ $50,000 ต่อเดือนสำเร็จ ({formatMoney(ftBusinessIncome)}) 🎉
                                 </p>
                             </div>
                         )}
@@ -824,11 +993,11 @@
                                                     </div>
                                                     <div className="col-span-3">
                                                         <label className="text-[10px] text-slate-500 font-bold block mb-1">จำนวน</label>
-                                                        <input type="number" min="1" value={stockInput.shares} onChange={e => setStockInput({...stockInput, shares: e.target.value})} className="w-full border rounded p-1.5 text-xs outline-none" required />
+                                                        <NumberInput value={stockInput.shares} onChange={val => setStockInput({...stockInput, shares: val})} className="w-full border rounded p-1.5 text-xs outline-none" required />
                                                     </div>
                                                     <div className="col-span-3">
                                                         <label className="text-[10px] text-slate-500 font-bold block mb-1">ราคา/หน่วย</label>
-                                                        <input type="number" min="1" value={stockInput.costPerShare} onChange={e => setStockInput({...stockInput, costPerShare: e.target.value})} className="w-full border rounded p-1.5 text-xs outline-none" required />
+                                                        <NumberInput value={stockInput.costPerShare} onChange={val => setStockInput({...stockInput, costPerShare: val})} className="w-full border rounded p-1.5 text-xs outline-none" required />
                                                     </div>
                                                     <div className="col-span-2">
                                                         <button type="submit" className="w-full bg-blue-600 text-white rounded p-1.5 text-xs font-bold hover:bg-blue-700 h-[28px]">ซื้อ</button>
@@ -864,15 +1033,15 @@
                                                     </div>
                                                     <div className="col-span-4 md:col-span-3">
                                                         <label className="text-[10px] text-slate-500 font-bold block mb-1">เงินดาวน์ (จ่าย)</label>
-                                                        <input type="number" min="0" value={reInput.downPayment} onChange={e => setReInput({...reInput, downPayment: e.target.value})} className="w-full border rounded p-1.5 text-xs outline-none" required />
+                                                        <NumberInput value={reInput.downPayment} onChange={val => setReInput({...reInput, downPayment: val})} className="w-full border rounded p-1.5 text-xs outline-none" required />
                                                     </div>
                                                     <div className="col-span-4 md:col-span-3">
                                                         <label className="text-[10px] text-slate-500 font-bold block mb-1">ต้นทุนรวม</label>
-                                                        <input type="number" min="1" value={reInput.cost} onChange={e => setReInput({...reInput, cost: e.target.value})} className="w-full border rounded p-1.5 text-xs outline-none" required />
+                                                        <NumberInput value={reInput.cost} onChange={val => setReInput({...reInput, cost: val})} className="w-full border rounded p-1.5 text-xs outline-none" required />
                                                     </div>
                                                     <div className="col-span-4 md:col-span-2">
                                                         <label className="text-[10px] text-emerald-600 font-bold block mb-1">Cashflow(+)</label>
-                                                        <input type="number" value={reInput.cashflow} onChange={e => setReInput({...reInput, cashflow: e.target.value})} className="w-full border rounded p-1.5 text-xs outline-none text-emerald-700 font-bold" required />
+                                                        <NumberInput value={reInput.cashflow} onChange={val => setReInput({...reInput, cashflow: val})} className="w-full border rounded p-1.5 text-xs outline-none text-emerald-700 font-bold" required />
                                                     </div>
                                                     <div className="col-span-12 md:col-span-1">
                                                         <button type="submit" className="w-full bg-emerald-600 text-white rounded p-1.5 text-xs font-bold hover:bg-emerald-700 h-[28px] flex justify-center items-center"><i className="fas fa-plus"></i></button>
@@ -923,7 +1092,7 @@
                                                     <div className="font-black text-rose-600 text-xl">{formatMoney(gameState.bankLoanAmount)}</div>
                                                 </div>
                                                 <div className="flex gap-2">
-                                                    <input type="number" step="1000" min="1000" value={customBankLoan} onChange={e => setCustomBankLoan(e.target.value)} placeholder="ระบุยอด x1,000" className="flex-1 border rounded px-2 py-1.5 text-sm outline-none focus:border-blue-500" />
+                                                    <NumberInput value={customBankLoan} onChange={val => setCustomBankLoan(val)} placeholder="ระบุยอด x1,000" className="flex-1 border rounded px-2 py-1.5 text-sm outline-none focus:border-blue-500" />
                                                     <button onClick={() => handleBankLoanAction('borrow')} className="bg-white border border-slate-300 rounded px-4 py-1.5 text-sm font-bold shadow-sm hover:bg-slate-100">+ กู้</button>
                                                     <button onClick={() => handleBankLoanAction('repay')} className="bg-white border border-rose-300 rounded px-4 py-1.5 text-sm font-bold shadow-sm hover:bg-rose-50 text-rose-600">- คืน</button>
                                                 </div>
@@ -1005,38 +1174,15 @@
                                                     ))}
                                                 </ul>
                                             }
-                                            <button onClick={() => {
-                                                const name = prompt("ชื่อธุรกิจบน Fast Track:");
-                                                if(!name) return;
-                                                const cost = Number(prompt("ราคาซื้อ (จ่ายเงินสดก้อนเดียว):"));
-                                                if(isNaN(cost) || cost <= 0) return;
-                                                const cf = Number(prompt("Cashflow ที่ได้ต่อเดือน:"));
-                                                if(isNaN(cf) || cf <= 0) return;
-                                                
-                                                if(gameState.cash < cost) return alert("เงินสดไม่พอซื้อ!");
-                                                setGameState(prev => ({...prev, cash: prev.cash - cost, fastTrack: {...prev.fastTrack, businesses: [...prev.fastTrack.businesses, {id: generateId(), name, cost, cashflow: cf}]}}));
-                                                addHistory(`ซื้อธุรกิจ FT: ${name}`, cost, 'expense');
-                                            }} className="w-full mt-4 bg-amber-500 text-white font-bold py-3 rounded-lg shadow hover:bg-amber-600 transition">+ ซื้อธุรกิจใหม่</button>
+                                            {/* เปลี่ยนปุ่มซื้อธุรกิจให้ดึง Action Modal ขึ้นมาแทนการใช้ prompt */}
+                                            <button onClick={() => openModal({type: 'buy_ft_business'})} className="w-full mt-4 bg-amber-500 text-white font-bold py-3 rounded-lg shadow hover:bg-amber-600 transition">+ ซื้อธุรกิจใหม่</button>
                                         </div>
-                                    </div>
-
-                                    <div className="bg-rose-50 rounded-xl shadow-sm border-2 border-rose-200 p-6 text-center">
-                                        <h3 className="font-black text-xl text-rose-900 mb-2">เป้าหมายความฝัน</h3>
-                                        <button onClick={() => {
-                                            const costStr = prompt("ระบุราคาความฝันที่ต้องการซื้อ (เช่น 50000):");
-                                            if(!costStr) return;
-                                            const cost = Number(costStr);
-                                            if(isNaN(cost) || cost <= 0) return;
-                                            if(gameState.cash < cost) return alert("เงินสดไม่พอซื้อความฝัน!");
-                                            setGameState(prev => ({...prev, cash: prev.cash - cost, fastTrack: {...prev.fastTrack, dreamBought: true}}));
-                                            addHistory('ซื้อความฝันสำเร็จ', cost, 'expense');
-                                        }} className="bg-rose-500 hover:bg-rose-600 text-white font-black py-3 px-8 rounded-full shadow-lg transition">ซื้อความฝัน (ชนะเกม)</button>
                                     </div>
                                 </div>
                             </div>
                         )}
                         
-                        {hasProfession && gameState.fastTrack.isActive && (
+                        {hasProfession && gameState.fastTrack.isActive && !hasWonGame && (
                             <div className="mt-8 bg-slate-800 text-white p-4 rounded-xl text-center font-bold">
                                 <i className="fas fa-lock text-amber-400 mr-2"></i> ข้อมูลสนามแข่งหนูถูกแช่แข็งแล้ว (คุณอยู่บนลู่ทางด่วน)
                             </div>
