@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Cashflow Boardgame Tracker</title>
+    <title>Cashflow Tracker</title>
     
     <!-- นำเข้า Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -63,7 +63,7 @@
             assets: { stocks: [], realEstate: [] },
             liabilities: {}, 
             history: [],
-            fastTrack: { isActive: false, baseIncome: 0, businesses: [] } // ตัดความฝันออกตามกติกาใหม่
+            fastTrack: { isActive: false, baseIncome: 0, businesses: [] } 
         };
 
         // ==========================================
@@ -126,13 +126,12 @@
         // 2. Main Application Component
         // ==========================================
         function App() {
-            // ระบบ Initial State ป้องกัน State พัง (Defensive Initialization)
-            const [gameState, setGameState] = useState(() => {
+            // ระบบ Initial State ป้องกัน State พัง
+            const [_gameState, _setGameState] = useState(() => {
                 try {
-                    const saved = localStorage.getItem('cashflow_v8_stable'); // เปลี่ยน Key เพื่อล้างไพ่ใหม่
+                    const saved = localStorage.getItem('cashflow_v9_stable'); 
                     if (saved) {
                         const parsed = JSON.parse(saved);
-                        // ประกอบร่างข้อมูลใหม่ให้ชัวร์ว่าโครงสร้างครบถ้วน 100%
                         return {
                             ...INITIAL_GAME_STATE,
                             ...parsed,
@@ -148,6 +147,48 @@
                 return INITIAL_GAME_STATE;
             });
 
+            // --- 🛡️ ARCHITECTURE: Undo/Redo System (Memento Pattern) ---
+            const [past, setPast] = useState([]);
+            const [future, setFuture] = useState([]);
+            
+            // ให้ตัวแปร gameState ชี้ไปที่ State จริง
+            const gameState = _gameState;
+
+            // Interceptor: ดักจับการเปลี่ยน State เพื่อเก็บ Snapshot ก่อนการเปลี่ยนแปลง
+            const setGameState = (updater) => {
+                _setGameState(currentState => {
+                    const nextState = typeof updater === 'function' ? updater(currentState) : updater;
+                    
+                    // ถ่ายรูป Snapshot เก็บไว้ในอดีต (จำกัด 30 ครั้ง)
+                    setPast(prev => [...prev, JSON.parse(JSON.stringify(currentState))].slice(-30));
+                    // ลบอนาคตทิ้งเมื่อมีการกระทำเส้นทางใหม่
+                    setFuture([]);
+                    
+                    return nextState;
+                });
+            };
+
+            const handleUndo = () => {
+                if (past.length === 0) return;
+                const previousState = past[past.length - 1];
+                const newPast = past.slice(0, past.length - 1);
+                
+                setPast(newPast);
+                setFuture(prev => [JSON.parse(JSON.stringify(gameState)), ...prev]);
+                _setGameState(previousState);
+            };
+
+            const handleRedo = () => {
+                if (future.length === 0) return;
+                const nextState = future[0];
+                const newFuture = future.slice(1);
+                
+                setFuture(newFuture);
+                setPast(prev => [...prev, JSON.parse(JSON.stringify(gameState))]);
+                _setGameState(nextState);
+            };
+            // --- End Undo/Redo System ---
+
             const [toastMsg, setToastMsg] = useState('');
             const [confirmDialog, setConfirmDialog] = useState(null); 
             const [actionModal, setActionModal] = useState(null); 
@@ -161,12 +202,12 @@
             const [customBankLoan, setCustomBankLoan] = useState(''); 
 
             useEffect(() => {
-                localStorage.setItem('cashflow_v8_stable', JSON.stringify(gameState));
+                localStorage.setItem('cashflow_v9_stable', JSON.stringify(gameState));
             }, [gameState]);
 
             const showToast = (msg) => {
                 setToastMsg(msg);
-                setTimeout(() => setToastMsg(''), 3000);
+                setTimeout(() => setToastMsg(''), 4000);
             };
 
             const addHistory = (desc, amount, type) => {
@@ -178,7 +219,8 @@
 
             const openModal = (modalData) => {
                 setActionModal(modalData);
-                setSellInput({ price: '', units: modalData?.payload?.shares || 1 }); 
+                // Reset ค่าที่เคยกรอกไว้ทุกครั้งที่เปิดหน้าต่างใหม่
+                setSellInput({ price: '', units: modalData?.payload?.item?.shares || 1 }); 
                 setManualTx({ desc: '', amount: '', cashflow: '' });
             };
 
@@ -187,10 +229,13 @@
                     title: 'เริ่มเกมใหม่?',
                     message: 'ข้อมูลทั้งหมดจะถูกลบถาวร ยืนยันหรือไม่?',
                     onConfirm: () => {
-                        localStorage.removeItem('cashflow_v8_stable');
+                        localStorage.removeItem('cashflow_v9_stable');
                         setGameState(INITIAL_GAME_STATE);
                         setBankruptcyMode(false);
-                        setConfirmDialog(null); // แก้บั๊กหน้าต่างค้าง
+                        setConfirmDialog(null); 
+                        setPast([]); 
+                        setFuture([]);
+                        window.scrollTo(0,0);
                         showToast('รีเซ็ตเกมเรียบร้อย');
                     }
                 });
@@ -237,10 +282,28 @@
             
             const isFastTrackReady = p1PassiveIncome >= p1TotalExpenses && p1TotalExpenses > 0 && !gameState.fastTrack.isActive;
 
-            // กฎใหม่: ชนะเกมทันทีเมื่อธุรกิจใหม่ทำรายได้รวมเกิน 50,000
             const ftBusinessIncome = gameState.fastTrack.businesses.reduce((sum, b) => sum + Number(b.cashflow), 0);
             const ftTotalIncome = gameState.fastTrack.baseIncome + ftBusinessIncome; 
             const hasWonGame = gameState.fastTrack.isActive && (ftBusinessIncome >= 50000);
+
+            // ==========================================
+            // 🚀 UX Upgrades: ระบบเลื่อนหน้าจออัตโนมัติ
+            // ==========================================
+            useEffect(() => {
+                // ถ้าพร้อมเข้า Fast Track และยังไม่ได้อยู่ใน Fast Track ให้เลื่อนหน้าจอไปด้านบน
+                if (isFastTrackReady && !gameState.fastTrack.isActive) {
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                    showToast('🎉 ยินดีด้วย! คุณสร้าง Passive Income มากกว่ารายจ่ายแล้ว พร้อมออกจากสนามแข่งหนู!');
+                }
+            }, [isFastTrackReady, gameState.fastTrack.isActive]);
+
+            useEffect(() => {
+                // ถ้าชนะเกม ให้เลื่อนหน้าจอไปด้านบนเพื่อดูป้ายประกาศชัยชนะ
+                if (hasWonGame) {
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                }
+            }, [hasWonGame]);
+
 
             // ==========================================
             // Event Handlers
@@ -280,13 +343,55 @@
                             addHistory('จ่ายส่วนต่าง Payday ติดลบ', deficit, 'expense');
                             showToast(`จ่าย Payday ติดลบ: -${formatMoney(deficit)}`);
                         } else {
-                            // เงินสดไม่พอจ่ายส่วนต่าง = เข้าสู่สถานะล้มละลายทันที
                             setBankruptcyMode(true);
                         }
                     }
                 }
             };
 
+            const handleBankLoanAction = (actionType) => {
+                const amt = Number(customBankLoan);
+                if (!amt || isNaN(amt) || amt <= 0 || amt % 1000 !== 0) {
+                    return setConfirmDialog({ title: 'ข้อมูลไม่ถูกต้อง', message: 'กรุณาระบุจำนวนเงินกู้ให้เป็นจำนวนเท่าของ 1,000', onConfirm: null });
+                }
+
+                if (actionType === 'borrow') {
+                    setGameState(p => ({...p, bankLoanAmount: p.bankLoanAmount + amt, cash: p.cash + amt}));
+                    addHistory('กู้เงินธนาคาร', amt, 'income');
+                    setCustomBankLoan('');
+                    showToast(`กู้เงินสำเร็จ ${formatMoney(amt)}`);
+                } else if (actionType === 'repay') {
+                    if (gameState.bankLoanAmount < amt) return setConfirmDialog({ title: 'ยอดหนี้ไม่ถึง', message: 'คุณระบุยอดคืนมากกว่าหนี้ที่มีอยู่', onConfirm: null });
+                    if (gameState.cash < amt) return setConfirmDialog({ title: 'เงินสดไม่พอ', message: 'คุณมีเงินสดไม่พอคืนธนาคาร', onConfirm: null });
+                    
+                    setGameState(p => ({...p, bankLoanAmount: p.bankLoanAmount - amt, cash: p.cash - amt}));
+                    addHistory('คืนเงินธนาคาร', amt, 'expense');
+                    setCustomBankLoan('');
+                    showToast(`คืนเงินสำเร็จ ${formatMoney(amt)}`);
+                }
+            };
+
+            const handlePayDebt = (debtType, currentDebt, label) => {
+                if (bankruptcyMode) {
+                    setGameState(prev => ({
+                        ...prev, cash: prev.cash - currentDebt, liabilities: { ...prev.liabilities, [debtType]: 0 }
+                    }));
+                    addHistory(`ปิดหนี้: ${label} (ล้มละลาย)`, currentDebt, 'expense');
+                    return;
+                }
+
+                executeWithAutoLoan(currentDebt, `จ่ายปิดหนี้: ${label}`, (loanAmount) => {
+                    setGameState(prev => ({
+                        ...prev, cash: prev.cash + loanAmount - currentDebt, bankLoanAmount: prev.bankLoanAmount + loanAmount,
+                        liabilities: { ...prev.liabilities, [debtType]: 0 }
+                    }));
+                    if(loanAmount > 0) addHistory('กู้เงินธนาคาร', loanAmount, 'income');
+                    addHistory(`ปิดหนี้: ${label}`, currentDebt, 'expense');
+                    showToast(`ปิดหนี้ ${label} สำเร็จ!`);
+                });
+            };
+
+            // ---- Events ----
             const handleBuyMLM = () => {
                 if(gameState.mlmCount >= 2) return setConfirmDialog({ title: 'ผิดพลาด', message: 'ลงทุน MLM ได้สูงสุด 2 ธุรกิจเท่านั้น', onConfirm: null });
                 executeWithAutoLoan(500, 'ลงทุนธุรกิจ MLM', (loanAmount) => {
@@ -332,7 +437,6 @@
                 e.preventDefault();
                 const type = actionModal.payload;
                 const amount = Number(manualTx.amount);
-                // ดึงค่า Fallback 'รายการจิปาถะ' มาใช้ถ้าผู้เล่นไม่ได้พิมพ์อะไรเลย
                 const desc = manualTx.desc || 'รายการจิปาถะ';
                 
                 if (type === 'income') {
@@ -351,49 +455,6 @@
                         showToast(`จ่ายเงิน: ${formatMoney(amount)}`);
                     });
                 }
-            };
-
-            const handleBankLoanAction = (actionType, overrideAmount = null) => {
-                const amt = overrideAmount !== null ? overrideAmount : Number(customBankLoan);
-                if (!amt || isNaN(amt) || amt <= 0 || amt % 1000 !== 0) {
-                    return setConfirmDialog({ title: 'ข้อมูลไม่ถูกต้อง', message: 'กรุณาระบุจำนวนเงินกู้ให้เป็นจำนวนเท่าของ 1,000 (เช่น 1000, 2000, 5000)', onConfirm: null });
-                }
-
-                if (actionType === 'borrow') {
-                    setGameState(p => ({...p, bankLoanAmount: p.bankLoanAmount + amt, cash: p.cash + amt}));
-                    addHistory('กู้เงินธนาคาร', amt, 'income');
-                    setCustomBankLoan('');
-                    showToast(`กู้เงินสำเร็จ ${formatMoney(amt)}`);
-                } else if (actionType === 'repay') {
-                    if (gameState.bankLoanAmount < amt) return setConfirmDialog({ title: 'ยอดหนี้ไม่ถึง', message: 'คุณระบุยอดคืนมากกว่าหนี้ที่มีอยู่', onConfirm: null });
-                    if (gameState.cash < amt) return setConfirmDialog({ title: 'เงินสดไม่พอ', message: 'คุณมีเงินสดไม่พอคืนธนาคาร', onConfirm: null });
-                    
-                    setGameState(p => ({...p, bankLoanAmount: p.bankLoanAmount - amt, cash: p.cash - amt}));
-                    addHistory('คืนเงินธนาคาร', amt, 'expense');
-                    setCustomBankLoan('');
-                    showToast(`คืนเงินสำเร็จ ${formatMoney(amt)}`);
-                }
-            };
-
-            const handlePayDebt = (debtType, currentDebt, label) => {
-                if (bankruptcyMode) {
-                    // หากอยู่ในโหมดล้มละลาย จะบังคับจ่ายจากเงินสดตรงๆ ห้ามกู้
-                    setGameState(prev => ({
-                        ...prev, cash: prev.cash - currentDebt, liabilities: { ...prev.liabilities, [debtType]: 0 }
-                    }));
-                    addHistory(`ปิดหนี้: ${label} (ล้มละลาย)`, currentDebt, 'expense');
-                    return;
-                }
-
-                executeWithAutoLoan(currentDebt, `จ่ายปิดหนี้: ${label}`, (loanAmount) => {
-                    setGameState(prev => ({
-                        ...prev, cash: prev.cash + loanAmount - currentDebt, bankLoanAmount: prev.bankLoanAmount + loanAmount,
-                        liabilities: { ...prev.liabilities, [debtType]: 0 }
-                    }));
-                    if(loanAmount > 0) addHistory('กู้เงินธนาคาร', loanAmount, 'income');
-                    addHistory(`ปิดหนี้: ${label}`, currentDebt, 'expense');
-                    showToast(`ปิดหนี้ ${label} สำเร็จ!`);
-                });
             };
 
             // ---- Assets Management ----
@@ -510,12 +571,9 @@
                 if (!bankruptcyMode) return null;
 
                 const isSaved = p1MonthlyCashflow >= 0;
-                
-                // ตรวจสอบว่ายังมีทางรอดไหม (ยังมีอสังหาให้ขาย หรือ มีเงินพอจ่ายหนี้อะไรได้บ้าง)
                 const canDoSomething = gameState.assets.realEstate.length > 0 || 
                                        (gameState.bankLoanAmount > 0 && gameState.cash >= 1000) || 
                                        Object.values(gameState.liabilities).some(d => d > 0 && gameState.cash >= d);
-                
                 const isGameOver = !isSaved && !canDoSomething;
 
                 if (isGameOver) {
@@ -637,7 +695,6 @@
                                                 <option value="ค่าทำแอคชั่น" />
                                                 <option value="ค่าซ่อมแซม" />
                                             </datalist>
-                                            {/* เอา required ออกเพื่อให้ปล่อยว่างได้ */}
                                             <input type="text" list={payload === 'expense' ? 'expense-presets' : ''} value={manualTx.desc} onChange={e => setManualTx({...manualTx, desc: e.target.value})} placeholder={payload === 'income' ? 'เช่น ได้เงินจากผู้เล่นอื่น' : 'ระบุรายการ หรือเลือกจากตัวเลือก'} className="w-full border rounded p-3 bg-slate-50 outline-none focus:border-blue-500" />
                                         </div>
                                         <div className="mb-6">
@@ -766,7 +823,6 @@
                         </div>
                     )}
 
-                    {/* แก้บั๊ก Z-index และปุ่มกดยืนยันของ Confirm Dialog */}
                     {confirmDialog && (
                         <div className="fixed inset-0 bg-slate-900/80 z-[130] flex items-center justify-center p-4 fade-in">
                             <div className="bg-white rounded-xl shadow-xl max-w-sm w-full p-6 text-center border-2 border-slate-200">
@@ -790,9 +846,21 @@
                             <div className="flex justify-between items-center mb-3">
                                 <h1 className="text-xl font-bold flex items-center gap-2">
                                     {gameState.fastTrack.isActive ? <i className="fas fa-rocket text-purple-400"></i> : <i className="fas fa-money-bill-wave text-emerald-400"></i>}
-                                    {gameState.fastTrack.isActive ? 'Cashflow : Fast Track' : 'Cashflow Phase 1: สนามแข่งหนู'}
+                                    {gameState.fastTrack.isActive ? 'Cashflow : Fast Track' : 'Cashflow Phase 1'}
                                 </h1>
-                                <button onClick={resetGame} className="text-sm bg-white/10 hover:bg-red-600 px-3 py-1.5 rounded transition-colors border border-white/20">เริ่มเกมใหม่</button>
+                                <div className="flex gap-2">
+                                    {/* ปุ่ม Undo / Redo */}
+                                    <div className="flex bg-white/10 rounded overflow-hidden border border-white/20">
+                                        <button onClick={handleUndo} disabled={past.length === 0} className={`px-3 py-1.5 transition-colors ${past.length > 0 ? 'hover:bg-blue-600 text-white' : 'text-white/30 cursor-not-allowed'}`} title="ย้อนกลับ (Undo)">
+                                            <i className="fas fa-undo"></i>
+                                        </button>
+                                        <div className="w-[1px] bg-white/20"></div>
+                                        <button onClick={handleRedo} disabled={future.length === 0} className={`px-3 py-1.5 transition-colors ${future.length > 0 ? 'hover:bg-blue-600 text-white' : 'text-white/30 cursor-not-allowed'}`} title="ทำซ้ำ (Redo)">
+                                            <i className="fas fa-redo"></i>
+                                        </button>
+                                    </div>
+                                    <button onClick={resetGame} className="text-sm bg-white/10 hover:bg-red-600 px-3 py-1.5 rounded transition-colors border border-white/20">เริ่มเกมใหม่</button>
+                                </div>
                             </div>
 
                             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -858,7 +926,7 @@
                         {!hasProfession && (
                             <div className="bg-white p-8 rounded-2xl shadow-sm border border-slate-200 text-center max-w-2xl mx-auto mt-10 fade-in">
                                 <div className="w-16 h-16 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center mx-auto mb-4 text-3xl"><i className="fas fa-user-tie"></i></div>
-                                <h2 className="text-2xl font-bold text-slate-800 mb-2">เริ่มเกม Cashflow Phase 1: สนามแข่งหนู</h2>
+                                <h2 className="text-2xl font-bold text-slate-800 mb-2">เริ่มเกม Phase 1: สนามแข่งหนู</h2>
                                 <p className="text-slate-500 mb-6">เลือกอาชีพของคุณเพื่อรับงบการเงินเริ่มต้น</p>
                                 <div className="flex flex-col sm:flex-row gap-3">
                                     <select onChange={(e) => handleSelectProfession(e.target.value)} className="flex-1 p-4 border-2 border-slate-200 rounded-xl bg-slate-50 font-bold text-lg outline-none focus:border-blue-500 transition" defaultValue="">
@@ -922,7 +990,7 @@
                                         </div>
                                         <div className="p-4 text-sm space-y-3">
                                             <div className="flex justify-between border-b pb-2">
-                                                <span className="text-slate-600">เงินเดือน {prof.name}</span>
+                                                <span className="text-slate-600">เงินเดือน ({prof.name})</span>
                                                 <span className="font-bold">{formatMoney(salary)}</span>
                                             </div>
                                             <div>
@@ -1176,7 +1244,6 @@
                                                     ))}
                                                 </ul>
                                             }
-                                            {/* เปลี่ยนปุ่มซื้อธุรกิจให้ดึง Action Modal ขึ้นมาแทนการใช้ prompt */}
                                             <button onClick={() => openModal({type: 'buy_ft_business'})} className="w-full mt-4 bg-amber-500 text-white font-bold py-3 rounded-lg shadow hover:bg-amber-600 transition">+ ซื้อธุรกิจใหม่</button>
                                         </div>
                                     </div>
