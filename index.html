@@ -2,9 +2,8 @@
 <html lang="th">
 <head>
     <meta charset="UTF-8">
-    <!-- ป้องกันการซูมอัตโนมัติเมื่อกด input ในมือถือ (iOS/Android) -->
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Cashflow Tracker - Pro Edition</title>
+    <title>Cashflow Tracker - Pro Edition V11</title>
     
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -51,13 +50,46 @@
         const PAPER_ASSETS = ["ON2U", "MYT4U", "OK4U", "GRO4US", "ทองคำ"];
         const RE_ASSETS = ["บ้าน 2Br/1Ba", "บ้าน 3Br/2Ba", "คอนโด 2Br/1Ba", "Apartment 12 unit", "Apartment 24 unit", "Apartment 60 unit", "Duplex", "4-plex", "8-plex", "Pizza Franchise", "Limited Partner", "Automated Business", "Car wash"];
 
+        // ฐานข้อมูลธุรกิจ Fast Track
+        const FT_BUSINESSES = [
+            { name: "Burger shop", cost: 300000, cf: 9500 },
+            { name: "Heat and A/C Service", cost: 200000, cf: 10000 },
+            { name: "Quick Food market", cost: 120000, cf: 5000 },
+            { name: "Assisted living center", cost: 400000, cf: 8000 },
+            { name: "Ticket sales company", cost: 150000, cf: 5000 },
+            { name: "Hobby supply store", cost: 100000, cf: 3000 },
+            { name: "Fried chicken restaurant", cost: 300000, cf: 10000 },
+            { name: "Dry dock storage", cost: 100000, cf: 3000 },
+            { name: "Beauty salon", cost: 100000, cf: 3000 },
+            { name: "Auto repair shop", cost: 150000, cf: 6000 },
+            { name: "Extreme sports equipment rental", cost: 150000, cf: 5000 },
+            { name: "Foreign oil deal", cost: 750000, cf: 0, special: 'oil' }, 
+            { name: "Movie theaters", cost: 150000, cf: 6000 },
+            { name: "Research center for diseases", cost: 300000, cf: 8000 },
+            { name: "App development company", cost: 150000, cf: 5000 },
+            { name: "Software Co. IPO", cost: 25000, cf: 0, special: 'software' }, 
+            { name: "Coffee shop", cost: 120000, cf: 5000 },
+            { name: "400-unit apartment building", cost: 300000, cf: 8000 },
+            { name: "Island vacation rentals", cost: 100000, cf: 3000 },
+            { name: "Build pro golf course", cost: 150000, cf: 6000 },
+            { name: "Pizza shop", cost: 225000, cf: 7000 },
+            { name: "Collectibles store", cost: 100000, cf: 3000 },
+            { name: "Frozen yogurt shop", cost: 120000, cf: 5000 },
+            { name: "Bio-Tech Co. IPO", cost: 50000, cf: 0, special: 'biotech' }, 
+            { name: "200-unit mini storage", cost: 200000, cf: 6000 },
+            { name: "Dry cleaning business", cost: 100000, cf: 3000 },
+            { name: "Mobile home park", cost: 400000, cf: 9000 },
+            { name: "Family restaurant", cost: 300000, cf: 14000 },
+            { name: "Private wildlife preserve", cost: 120000, cf: 5000 }
+        ].sort((a, b) => a.name.localeCompare(b.name));
+
         const INITIAL_GAME_STATE = {
             profession: null, 
             cash: 0,
             children: 0,
             bankLoanAmount: 0, 
             mlmCount: 0,
-            assets: { stocks: [], realEstate: [] }, // stock item will have hasSplit, hasRevSplit
+            assets: { stocks: [], realEstate: [] },
             liabilities: {}, 
             history: [],
             fastTrack: { isActive: false, baseIncome: 0, businesses: [] } 
@@ -89,6 +121,7 @@
             return parseFloat(str); 
         };
 
+        // 🛠️ อัปเดตแก้บั๊ก 'Match request format' - เอา pattern ออกเพื่อไม่ให้ตีกับลูกน้ำ (,)
         const NumberInput = ({ value, onChange, placeholder, className, required, disabled }) => {
             const displayValue = (value === '' || value === '-' || value === null || value === undefined) 
                 ? (value || '') 
@@ -107,6 +140,7 @@
                 <input 
                     type="text" 
                     inputMode="numeric" 
+                    // ลบ pattern="[0-9]*" ออก ป้องกันบั๊กบล็อกการ Submit เมื่อมีลูกน้ำ
                     value={displayValue} 
                     onChange={handleChange} 
                     placeholder={placeholder} 
@@ -123,7 +157,7 @@
         function App() {
             const [_gameState, _setGameState] = useState(() => {
                 try {
-                    const saved = localStorage.getItem('cashflow_v10_pro'); 
+                    const saved = localStorage.getItem('cashflow_v11_pro'); 
                     if (saved) {
                         const parsed = JSON.parse(saved);
                         return {
@@ -179,15 +213,16 @@
             const [actionModal, setActionModal] = useState(null); 
             const [autoLoanPrompt, setAutoLoanPrompt] = useState(null);
             const [bankruptcyMode, setBankruptcyMode] = useState(false); 
+            const [showMultiplayerInfo, setShowMultiplayerInfo] = useState(false); 
             
-            // Stock Input Form State
+            // Input Forms
             const [stockInput, setStockInput] = useState({ symbol: PAPER_ASSETS[0], shares: '', costPerShare: '', totalCost: '' });
             const [reInput, setReInput] = useState({ name: RE_ASSETS[0], downPayment: '', cost: '', cashflow: '' });
             const [sellInput, setSellInput] = useState({ price: '', units: '' }); 
             const [manualTx, setManualTx] = useState({ desc: '', amount: '', cashflow: '' }); 
 
             useEffect(() => {
-                localStorage.setItem('cashflow_v10_pro', JSON.stringify(gameState));
+                localStorage.setItem('cashflow_v11_pro', JSON.stringify(gameState));
             }, [gameState]);
 
             const showToast = (msg) => {
@@ -205,7 +240,11 @@
             const openModal = (modalData) => {
                 setActionModal(modalData);
                 setSellInput({ price: '', units: modalData?.payload?.item?.shares || 1 }); 
-                setManualTx({ desc: '', amount: '', cashflow: '' });
+                if (modalData.type === 'edit_cf') {
+                    setManualTx({ desc: '', amount: modalData.payload.item.cashflow, cashflow: '' });
+                } else {
+                    setManualTx({ desc: '', amount: '', cashflow: '' });
+                }
             };
 
             const resetGame = () => {
@@ -213,7 +252,7 @@
                     title: 'เริ่มเกมใหม่?',
                     message: 'ข้อมูลทั้งหมดจะถูกลบถาวร ยืนยันหรือไม่?',
                     onConfirm: () => {
-                        localStorage.removeItem('cashflow_v10_pro');
+                        localStorage.removeItem('cashflow_v11_pro');
                         setGameState(INITIAL_GAME_STATE);
                         setBankruptcyMode(false);
                         setConfirmDialog(null); 
@@ -225,7 +264,6 @@
                 });
             };
 
-            // อัปเกรดระบบ Auto-Loan รับค่ากู้แบบแก้ไขได้
             const executeWithAutoLoan = (cost, txDesc, stateUpdaterCallback) => {
                 if (gameState.cash >= cost) {
                     stateUpdaterCallback(0); 
@@ -275,9 +313,8 @@
 
             const ftBusinessIncome = gameState.fastTrack.businesses.reduce((sum, b) => sum + Number(b.cashflow), 0);
             const ftTotalIncome = gameState.fastTrack.baseIncome + ftBusinessIncome; 
+            const ftProgress = Math.min((ftBusinessIncome / 50000) * 100, 100);
             const hasWonGame = gameState.fastTrack.isActive && (ftBusinessIncome >= 50000);
-
-            // คำนวณความคืบหน้าของ Passive Income
             const passiveProgress = p1TotalExpenses > 0 ? Math.min((p1PassiveIncome / p1TotalExpenses) * 100, 100) : 0;
 
             useEffect(() => {
@@ -375,7 +412,6 @@
                 });
             };
 
-            // ---- Events ----
             const handleBuyMLM = () => {
                 if(gameState.mlmCount >= 2) return setConfirmDialog({ title: 'ผิดพลาด', message: 'ลงทุน MLM ได้สูงสุด 2 ธุรกิจเท่านั้น', onConfirm: null });
                 executeWithAutoLoan(500, 'ลงทุนธุรกิจ MLM', (loanAmount) => {
@@ -386,6 +422,18 @@
                     addHistory('ลงทุนเปิดสายงาน MLM', 500, 'expense');
                     showToast("เริ่มทำธุรกิจ MLM แล้ว!");
                 });
+            };
+            
+            const handleReceiveMLM = () => {
+                const isSuccess = Math.random() >= 0.5;
+                if (isSuccess) {
+                    setGameState(p => ({...p, cash: p.cash + 500})); 
+                    addHistory('รับรายได้ MLM (สุ่มสำเร็จ)', 500, 'income'); 
+                    showToast('🎉 สุ่มสำเร็จ! รับเงิน MLM $500');
+                } else {
+                    addHistory('รายได้ MLM (สุ่มพลาด)', 0, 'info'); 
+                    showToast('สุ่มพลาด! ไม่ได้รับเงิน MLM รอบนี้');
+                }
             };
 
             const handleCharity = () => {
@@ -556,7 +604,7 @@
             };
 
             const handleSellToBankrupt = (re) => {
-                const received = Math.floor(re.downPayment / 2); // ได้คืนแค่ครึ่งเดียวของเงินดาวน์
+                const received = Math.floor(re.downPayment / 2); 
                 setGameState(prev => ({
                     ...prev,
                     cash: prev.cash + received,
@@ -614,14 +662,15 @@
                 }
             };
 
-            const handleFtHospital = (percent) => {
-                const cost = percent === 100 ? gameState.cash : Math.floor(gameState.cash / 2);
-                if (cost === 0) return alert('คุณไม่มีเงินสดให้หักแล้ว');
-                if (window.confirm(`จ่ายค่ารักษาพยาบาล ${percent}% ของเงินสด (${formatMoney(cost)}) ยืนยัน?`)) {
-                    setGameState(p => ({ ...p, cash: p.cash - cost }));
-                    addHistory(`ค่ารักษาพยาบาล (-${percent}%)`, cost, 'expense');
-                    showToast(`จ่ายค่ารักษาพยาบาล ${formatMoney(cost)}`);
-                }
+            const handleFtHospital = () => {
+                if (gameState.cash <= 0) return alert('คุณไม่มีเงินสดให้หักแล้ว');
+                const isTotalLoss = Math.random() >= 0.5;
+                const cost = isTotalLoss ? gameState.cash : Math.floor(gameState.cash / 2);
+                const pctLabel = isTotalLoss ? '100%' : '50%';
+                
+                setGameState(p => ({ ...p, cash: p.cash - cost }));
+                addHistory(`ค่ารักษาพยาบาล (-${pctLabel})`, cost, 'expense');
+                showToast(`หมุนสุ่มโดนจ่าย ${pctLabel} (เสียเงิน ${formatMoney(cost)})`);
             };
 
             const handleFtPenalty = () => {
@@ -631,6 +680,16 @@
                     setGameState(prev => ({...prev, cash: prev.cash - penalty}));
                     addHistory('บทลงโทษทางด่วน (-50%)', penalty, 'expense');
                     showToast(`สูญเสียเงินสด ${formatMoney(penalty)}`);
+                }
+            };
+
+            const handleFtBusinessNameChange = (e) => {
+                const val = e.target.value;
+                const matched = FT_BUSINESSES.find(b => b.name.toLowerCase() === val.toLowerCase());
+                if (matched) {
+                    setManualTx({ desc: matched.name, amount: matched.cost, cashflow: matched.cf, special: matched.special });
+                } else {
+                    setManualTx({ ...manualTx, desc: val, special: null });
                 }
             };
 
@@ -773,6 +832,7 @@
                                     {type === 'one_off_tx' && (payload === 'income' ? '💰 บันทึกรายรับ' : '💳 บันทึกรายจ่าย')}
                                     {type === 'sell_stock' && `📈 ขายสินทรัพย์: ${payload.item.symbol}`}
                                     {type === 'sell_re' && `🏠 ขายอสังหาฯ: ${payload.item.name}`}
+                                    {type === 'edit_cf' && `✏️ แก้ไข Cashflow: ${payload.item.name}`}
                                     {type === 'buy_ft_business' && `💼 ซื้อธุรกิจบนลู่ทางด่วน`}
                                 </h3>
                                 <button type="button" onClick={() => setActionModal(null)} className="text-slate-300 hover:text-white"><i className="fas fa-times"></i></button>
@@ -800,25 +860,77 @@
                                     </form>
                                 )}
 
+                                {type === 'edit_cf' && (
+                                    <form onSubmit={(e) => {
+                                        e.preventDefault();
+                                        const newCf = Number(manualTx.amount);
+                                        setGameState(prev => ({
+                                            ...prev, 
+                                            assets: {
+                                                ...prev.assets,
+                                                realEstate: prev.assets.realEstate.map(re => re.id === payload.item.id ? {...re, cashflow: newCf} : re)
+                                            }
+                                        }));
+                                        addHistory(`แก้ไข CF (${payload.item.name})`, 0, 'info');
+                                        setActionModal(null);
+                                        showToast('แก้ไข Cashflow เรียบร้อย');
+                                    }}>
+                                        <div className="mb-6">
+                                            <label className="block text-sm font-bold text-slate-700 mb-1">ระบุ Cashflow ใหม่</label>
+                                            <NumberInput value={manualTx.amount} onChange={val => setManualTx({...manualTx, amount: val})} className="w-full border rounded p-3 text-xl font-bold bg-slate-50 outline-none focus:border-blue-500" required />
+                                        </div>
+                                        <button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded shadow">บันทึกการแก้ไข</button>
+                                    </form>
+                                )}
+
                                 {type === 'buy_ft_business' && (
                                     <form onSubmit={(e) => {
                                         e.preventDefault();
                                         const cost = Number(manualTx.amount);
                                         const cf = Number(manualTx.cashflow);
+                                        const name = manualTx.desc;
+                                        
                                         if (gameState.cash < cost) {
                                             return setConfirmDialog({ title: 'เงินสดไม่พอ', message: 'คุณมีเงินสดไม่พอที่จะซื้อธุรกิจนี้!', onConfirm: () => setConfirmDialog(null) });
                                         }
+
+                                        let actualCf = cf;
+                                        let bonusCash = 0;
+                                        let specialMsg = '';
+
+                                        if (manualTx.special === 'oil') {
+                                            const roll = Math.floor(Math.random() * 6) + 1;
+                                            if (roll === 6) { actualCf = 75000; specialMsg = 'ทอยได้ 6! สำเร็จ รับ Cashflow 75,000'; }
+                                            else { actualCf = 0; specialMsg = `ทอยได้ ${roll} ล้มเหลว! ไม่ได้ Cashflow`; }
+                                        } else if (manualTx.special === 'software') {
+                                            const roll = Math.floor(Math.random() * 6) + 1;
+                                            actualCf = 0;
+                                            if (roll === 6) { bonusCash = 500000; specialMsg = 'ทอยได้ 6! สำเร็จ รับเงินสด 500,000'; }
+                                            else { specialMsg = `ทอยได้ ${roll} ล้มเหลว! ไม่ได้เงิน`; }
+                                        } else if (manualTx.special === 'biotech') {
+                                            const roll = Math.floor(Math.random() * 6) + 1;
+                                            actualCf = 0;
+                                            if (roll >= 5) { bonusCash = 500000; specialMsg = `ทอยได้ ${roll}! สำเร็จ รับเงินสด 500,000`; }
+                                            else { specialMsg = `ทอยได้ ${roll} ล้มเหลว! ไม่ได้เงิน`; }
+                                        }
+
                                         setGameState(prev => ({
-                                            ...prev, cash: prev.cash - cost,
-                                            fastTrack: { ...prev.fastTrack, businesses: [...prev.fastTrack.businesses, { id: generateId(), name: manualTx.desc, cost, cashflow: cf }] }
+                                            ...prev, cash: prev.cash - cost + bonusCash,
+                                            fastTrack: { ...prev.fastTrack, businesses: [...prev.fastTrack.businesses, { id: generateId(), name, cost, cashflow: actualCf }] }
                                         }));
-                                        addHistory(`ซื้อธุรกิจ FT: ${manualTx.desc}`, cost, 'expense');
+                                        addHistory(`ซื้อธุรกิจ FT: ${name}`, cost, 'expense');
+                                        if(bonusCash > 0) addHistory(`ได้รับเงินโบนัส: ${name}`, bonusCash, 'income');
+                                        
                                         setActionModal(null);
-                                        showToast("ซื้อธุรกิจใหม่สำเร็จ!");
+                                        showToast(specialMsg || "ซื้อธุรกิจใหม่สำเร็จ!");
                                     }}>
                                         <div className="mb-4">
                                             <label className="block text-sm font-bold text-slate-700 mb-1">ชื่อธุรกิจ</label>
-                                            <input type="text" value={manualTx.desc} onChange={e => setManualTx({...manualTx, desc: e.target.value})} className="w-full border rounded p-3 bg-slate-50 outline-none focus:border-blue-500 text-base" required />
+                                            <datalist id="ft-businesses">
+                                                {FT_BUSINESSES.map(b => <option key={b.name} value={b.name} />)}
+                                            </datalist>
+                                            <input type="text" list="ft-businesses" value={manualTx.desc} onChange={handleFtBusinessNameChange} placeholder="พิมพ์เพื่อค้นหา..." className="w-full border rounded p-3 bg-slate-50 outline-none focus:border-blue-500 text-base font-bold text-slate-800" required />
+                                            {manualTx.special && <div className="text-xs text-amber-600 font-bold mt-1"><i className="fas fa-star"></i> ธุรกิจนี้มีกฎทอยลูกเต๋าพิเศษตอนซื้อ!</div>}
                                         </div>
                                         <div className="mb-4">
                                             <label className="block text-sm font-bold text-slate-700 mb-1">ราคาซื้อ (จ่ายเงินสดก้อนเดียว)</label>
@@ -855,6 +967,7 @@
                                                 </div>
                                                 <div>
                                                     <label className="block text-xs font-bold text-slate-700 mb-1">ราคาขาย / หน่วย</label>
+                                                    {/* ถอด inputMode="numeric" ออก เพื่อให้พิมพ์ +, % ได้ง่ายบนมือถือ */}
                                                     <input type="text" value={sellInput.price} onChange={e => setSellInput({...sellInput, price: e.target.value})} placeholder="เช่น 50, +20%, +10" className="w-full border rounded p-2 outline-none focus:border-blue-500 text-base" required />
                                                 </div>
                                             </div>
@@ -884,6 +997,7 @@
                                             </div>
                                             <div className="mb-4">
                                                 <label className="block text-sm font-bold text-slate-700 mb-1">ราคาขายรวม (Total Price)</label>
+                                                {/* ถอด inputMode="numeric" ออก เพื่อให้พิมพ์ +, % ได้ง่ายบนมือถือ */}
                                                 <input type="text" value={sellInput.price} onChange={e => setSellInput({...sellInput, price: e.target.value})} placeholder="เช่น 50000, +20% หรือราคาเต็ม" className="w-full border rounded p-3 outline-none focus:border-blue-500 text-base" required />
                                             </div>
 
@@ -931,6 +1045,26 @@
                         </div>
                     )}
 
+                    {/* Multiplayer Modal */}
+                    {showMultiplayerInfo && (
+                        <div className="fixed inset-0 bg-slate-900/90 z-[130] flex items-center justify-center p-4 fade-in">
+                            <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-8 text-center border-2 border-blue-200 relative">
+                                <button onClick={() => setShowMultiplayerInfo(false)} className="absolute top-4 right-4 text-slate-400 hover:text-slate-800 text-xl"><i className="fas fa-times"></i></button>
+                                <div className="text-blue-500 text-5xl mb-4"><i className="fas fa-users"></i></div>
+                                <h3 className="text-2xl font-black mb-2 text-slate-800">ระบบ Multiplayer (Beta)</h3>
+                                <p className="text-slate-600 mb-4 text-sm leading-relaxed text-left">
+                                    การทำระบบให้เพื่อนเข้าร่วมห้อง (Room Sync) เพื่อดูหน้าจอแบบ Real-time จะต้องใช้ <strong className="text-blue-600">Cloud Database</strong> (เช่น Firebase Firestore) เข้ามาเชื่อมต่อครับ
+                                </p>
+                                <div className="bg-slate-50 p-4 rounded-lg text-left text-xs text-slate-500 mb-6 border">
+                                    💡 <strong>ทำไมถึงยังใช้ไม่ได้บนเว็บนี้?</strong><br/>
+                                    เนื่องจากไฟล์นี้เป็น Static File (HTML ไฟล์เดียว) ที่คุณรันอยู่บนเครื่องหรือ GitHub Pages โดยไม่ได้ฝัง Database Config เอาไว้ (เพื่อความปลอดภัยของคุณเอง) <br/><br/>
+                                    หากคุณต้องการเปิดใช้งานระบบนี้เต็มรูปแบบ คุณจะต้องสมัคร Firebase สร้าง Project และนำ Config มาใส่ในโค้ดส่วน Header ครับ (Tech Lead แนะนำให้รันแบบ Local ให้ชินก่อนขยับไปทำ Server-side นะครับ!)
+                                </div>
+                                <button onClick={() => setShowMultiplayerInfo(false)} className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg shadow transition">เข้าใจแล้ว ปิดหน้าต่าง</button>
+                            </div>
+                        </div>
+                    )}
+
                     {renderAutoLoanPrompt()}
                     {renderBankruptcyModal()}
                     {renderActionModal()}
@@ -943,6 +1077,9 @@
                                     {gameState.fastTrack.isActive ? 'Cashflow : Fast Track' : 'Cashflow Phase 1'}
                                 </h1>
                                 <div className="flex gap-2">
+                                    <button onClick={() => setShowMultiplayerInfo(true)} className="text-xs font-bold bg-blue-600/80 hover:bg-blue-500 px-3 py-1.5 rounded transition-colors shadow flex items-center gap-1">
+                                        <i className="fas fa-globe"></i> เล่นกับเพื่อน
+                                    </button>
                                     <div className="flex bg-white/10 rounded overflow-hidden border border-white/20">
                                         <button onClick={handleUndo} disabled={past.length === 0} className={`px-3 py-1.5 transition-colors ${past.length > 0 ? 'hover:bg-blue-600 text-white' : 'text-white/30 cursor-not-allowed'}`} title="ย้อนกลับ (Undo)">
                                             <i className="fas fa-undo"></i>
@@ -952,7 +1089,7 @@
                                             <i className="fas fa-redo"></i>
                                         </button>
                                     </div>
-                                    <button onClick={resetGame} className="text-sm bg-white/10 hover:bg-red-600 px-3 py-1.5 rounded transition-colors border border-white/20">เริ่มเกมใหม่</button>
+                                    <button onClick={resetGame} className="text-sm bg-white/10 hover:bg-red-600 px-3 py-1.5 rounded transition-colors border border-white/20"><i className="fas fa-power-off"></i></button>
                                 </div>
                             </div>
 
@@ -960,11 +1097,10 @@
                                 <div className="bg-gradient-to-br from-emerald-600 to-green-700 p-3 rounded-lg relative shadow-inner border border-emerald-500 flex flex-col justify-between">
                                     <div className="text-emerald-100 text-xs mb-1 font-bold flex justify-between items-center">
                                         <span><i className="fas fa-wallet mr-1"></i> เงินสด (Cash)</span>
-                                        {/* ซ่อนปุ่มรับ/จ่ายเงินจิปาถะใน Phase 2 */}
                                         {!gameState.fastTrack.isActive && (
                                             <div className="flex gap-1">
-                                                <button onClick={() => openModal({type: 'one_off_tx', payload: 'income'})} className="bg-white text-emerald-700 hover:bg-emerald-100 w-10 h-10 rounded flex items-center justify-center font-black shadow text-xl" title="รับเงินจิปาถะ">+</button>
-                                                <button onClick={() => openModal({type: 'one_off_tx', payload: 'expense'})} className="bg-red-500 text-white hover:bg-red-600 w-10 h-10 rounded flex items-center justify-center font-black shadow border border-red-400 text-xl" title="จ่ายเงินจิปาถะ">-</button>
+                                                <button onClick={() => openModal({type: 'one_off_tx', payload: 'income'})} className="bg-white text-emerald-700 hover:bg-emerald-100 w-8 h-8 rounded flex items-center justify-center font-black shadow text-lg" title="รับเงินจิปาถะ">+</button>
+                                                <button onClick={() => openModal({type: 'one_off_tx', payload: 'expense'})} className="bg-red-500 text-white hover:bg-red-600 w-8 h-8 rounded flex items-center justify-center font-black shadow border border-red-400 text-lg" title="จ่ายเงินจิปาถะ">-</button>
                                             </div>
                                         )}
                                     </div>
@@ -973,13 +1109,19 @@
                                 
                                 {gameState.fastTrack.isActive ? (
                                     <>
-                                        <div className="bg-white/10 p-2 rounded-lg border border-white/10 flex flex-col justify-center">
-                                            <div className="text-purple-200 text-xs mb-1">Day Pay พื้นฐาน</div>
-                                            <div className="text-xl font-bold">{formatMoney(gameState.fastTrack.baseIncome)}</div>
-                                        </div>
-                                        <div className="bg-white/10 p-2 rounded-lg border border-purple-400/30 flex flex-col justify-center">
-                                            <div className="text-emerald-300 text-xs mb-1 font-bold">รายได้ธุรกิจใหม่ (เป้า: $50K)</div>
-                                            <div className="text-xl font-bold text-emerald-400">+{formatMoney(ftBusinessIncome)}</div>
+                                        <div className="bg-white/10 p-2 rounded-lg border border-purple-400/50 flex flex-col justify-center relative overflow-hidden col-span-2">
+                                            <div className="flex justify-between items-center mb-1">
+                                                <span className="text-purple-200 text-xs font-bold">Fast Track Cashflow</span>
+                                                <span className="text-white text-xs font-bold">{Math.floor(ftProgress)}%</span>
+                                            </div>
+                                            <div className="text-sm font-bold text-white mb-2">
+                                                <span className="opacity-80">Day Pay {formatMoney(gameState.fastTrack.baseIncome)}</span>
+                                                <span className="mx-2">+</span>
+                                                <span className="text-emerald-300">ธุรกิจใหม่ {formatMoney(ftBusinessIncome)}</span>
+                                            </div>
+                                            <div className="absolute bottom-0 left-0 h-1.5 bg-black/30 w-full">
+                                                <div className="h-full bg-emerald-400" style={{ width: `${ftProgress}%` }}></div>
+                                            </div>
                                         </div>
                                     </>
                                 ) : (
@@ -992,7 +1134,6 @@
                                             <div className="text-sm font-bold text-white mt-1">
                                                 <span className="text-emerald-300">{formatMoney(p1PassiveIncome)}</span> / <span className="opacity-80">{formatMoney(p1TotalExpenses)}</span>
                                             </div>
-                                            {/* Progress Bar */}
                                             <div className="absolute bottom-0 left-0 h-1 bg-white/20 w-full">
                                                 <div className="h-full bg-emerald-400" style={{ width: `${passiveProgress}%` }}></div>
                                             </div>
@@ -1078,10 +1219,10 @@
                                             <div className="col-span-2 bg-indigo-50 p-3 rounded-lg border border-indigo-200 flex justify-between items-center">
                                                 <div>
                                                     <div className="font-bold text-indigo-900 text-sm"><i className="fas fa-network-wired text-indigo-500 mr-1"></i> ธุรกิจ MLM (ลงทุนแล้ว {gameState.mlmCount}/2)</div>
-                                                    <div className="text-xs text-indigo-600">ทอยได้ 4-6 รับทีละ $500</div>
+                                                    <div className="text-xs text-indigo-600">โอกาส 50% รับทีละ $500</div>
                                                 </div>
                                                 <div className="flex gap-2">
-                                                    {gameState.mlmCount > 0 && <button onClick={() => {setGameState(p=>({...p, cash: p.cash+500})); addHistory('รับรายได้ MLM', 500, 'income'); showToast('รับเงิน MLM สำเร็จ');}} className="bg-indigo-600 text-white px-3 py-1.5 rounded font-bold text-xs shadow hover:bg-indigo-700">รับ $500</button>}
+                                                    {gameState.mlmCount > 0 && <button onClick={handleReceiveMLM} className="bg-indigo-600 text-white px-3 py-1.5 rounded font-bold text-xs shadow hover:bg-indigo-700 flex items-center gap-1"><i className="fas fa-dice"></i> สุ่มรับ $500</button>}
                                                     <button onClick={handleBuyMLM} className={`px-3 py-1.5 rounded font-bold text-xs border ${gameState.mlmCount >= 2 ? 'bg-slate-200 text-slate-400 border-slate-300' : 'bg-white text-indigo-700 border-indigo-300 hover:bg-indigo-100'}`}>ลงทุน ($500)</button>
                                                 </div>
                                             </div>
@@ -1194,7 +1335,6 @@
                                                                     </div>
                                                                     <button onClick={() => openModal({type: 'sell_stock', payload: {item: s}})} className="bg-slate-100 hover:bg-slate-200 text-slate-700 px-3 py-1 text-xs font-bold rounded border shrink-0">ขาย</button>
                                                                 </div>
-                                                                {/* Stock Split Buttons */}
                                                                 <div className="flex gap-1 border-t pt-2 mt-1">
                                                                     <button onClick={() => handleStockAction(s.id, 'split')} disabled={s.hasSplit} className={`flex-1 text-[10px] py-1 rounded font-bold border transition ${s.hasSplit ? 'bg-slate-50 text-slate-300 border-slate-100 cursor-not-allowed' : 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'}`} title="Stock Split เพิ่มหน่วย x2">Split *2</button>
                                                                     <button onClick={() => handleStockAction(s.id, 'revSplit')} disabled={s.hasRevSplit} className={`flex-1 text-[10px] py-1 rounded font-bold border transition ${s.hasRevSplit ? 'bg-slate-50 text-slate-300 border-slate-100 cursor-not-allowed' : 'bg-rose-50 text-rose-700 border-rose-200 hover:bg-rose-100'}`} title="Reverse Split ลดหน่วย /2">Rev Split /2</button>
@@ -1236,8 +1376,12 @@
                                                         {gameState.assets.realEstate.map(re => (
                                                             <div key={re.id} className="bg-white border rounded p-2 flex justify-between items-center shadow-sm">
                                                                 <div>
-                                                                    <div className="font-bold text-slate-800 text-sm">{re.name} <span className="text-xs text-emerald-600 font-black ml-2">+{formatMoney(re.cashflow)}/ด.</span></div>
-                                                                    <div className="text-[10px] text-slate-500">ทุน: {formatMoney(re.cost)} | จำนอง: {formatMoney(re.mortgage)}</div>
+                                                                    <div className="font-bold text-slate-800 text-sm flex items-center gap-2">
+                                                                        {re.name} 
+                                                                        <button onClick={() => openModal({type: 'edit_cf', payload: {item: re}})} className="text-slate-400 hover:text-blue-500 text-[10px]"><i className="fas fa-pencil"></i> แก้ CF</button>
+                                                                    </div>
+                                                                    <div className="text-xs text-emerald-600 font-black mt-0.5">+{formatMoney(re.cashflow)}/ด.</div>
+                                                                    <div className="text-[10px] text-slate-500 mt-0.5">ทุน: {formatMoney(re.cost)} | จำนอง: {formatMoney(re.mortgage)}</div>
                                                                 </div>
                                                                 <button onClick={() => openModal({type: 'sell_re', payload: {item: re}})} className="bg-slate-100 hover:bg-slate-200 text-slate-700 px-3 py-1.5 text-xs font-bold rounded border shrink-0">ขาย</button>
                                                             </div>
@@ -1321,40 +1465,21 @@
                         )}
 
                         {gameState.fastTrack.isActive && !hasWonGame && (
-                            <div className="grid lg:grid-cols-2 gap-6 fade-in">
+                            <div className="grid lg:grid-cols-2 gap-6 fade-in mt-6">
+                                
                                 <div className="space-y-6">
-                                    <div className="bg-white rounded-xl shadow-sm border-2 border-purple-200 overflow-hidden">
-                                        <div className="bg-purple-100 px-4 py-3 font-black text-purple-900 border-b border-purple-200 text-lg"><i className="fas fa-chart-line"></i> รายรับบนลู่ทางด่วน</div>
-                                        <div className="p-6">
-                                            <div className="flex justify-between items-center bg-slate-50 p-4 rounded-lg border mb-4">
-                                                <span className="font-bold text-slate-600">กระแสเงินสดพื้นฐาน</span>
-                                                <span className="text-2xl font-black text-slate-800">{formatMoney(gameState.fastTrack.baseIncome)}</span>
-                                            </div>
-                                            <div className="flex justify-between items-center bg-emerald-50 p-4 rounded-lg border border-emerald-200">
-                                                <div>
-                                                    <span className="font-bold text-emerald-800 block">รายได้ธุรกิจใหม่ (เป้า: $50K)</span>
-                                                </div>
-                                                <span className="text-3xl font-black text-emerald-600">+{formatMoney(ftBusinessIncome)}</span>
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    {/* เหตุการณ์ชีวิต Phase 2 */}
                                     <div className="bg-white rounded-xl shadow-sm border-2 border-slate-300 overflow-hidden">
                                         <div className="bg-slate-100 px-4 py-3 font-black text-slate-700 border-b border-slate-200"><i className="fas fa-bolt text-amber-500"></i> เหตุการณ์ชีวิต (Events)</div>
                                         <div className="p-4 grid grid-cols-2 gap-3">
                                             
-                                            <div className="col-span-2 bg-rose-50 border border-rose-200 rounded p-3 text-center">
-                                                <div className="text-xs font-bold text-rose-800 mb-2">จ่ายค่ารักษาพยาบาล (Hospital)</div>
-                                                <div className="flex gap-2">
-                                                    <button onClick={() => handleFtHospital(50)} className="flex-1 bg-white hover:bg-rose-100 text-rose-600 font-bold py-2 rounded border border-rose-300 text-xs shadow-sm">จ่าย 50% เงินสดที่มี</button>
-                                                    <button onClick={() => handleFtHospital(100)} className="flex-1 bg-rose-600 hover:bg-rose-700 text-white font-bold py-2 rounded shadow text-xs">จ่ายเงินสดที่มีทั้งหมด</button>
-                                                </div>
-                                            </div>
+                                            <button onClick={handleFtHospital} className="col-span-2 bg-rose-50 hover:bg-rose-100 text-rose-800 font-bold py-3 px-4 rounded border border-rose-200 text-sm shadow-sm flex items-center justify-center gap-2">
+                                                <i className="fas fa-hospital text-xl text-rose-500"></i>
+                                                จ่ายค่ารักษาพยาบาล (สุ่มโดน 50% หรือ 100%)
+                                            </button>
 
                                             <button onClick={handleFtPenalty} className="bg-orange-50 hover:bg-orange-100 text-orange-800 font-bold py-3 px-4 rounded border border-orange-200 text-xs shadow-sm flex flex-col items-center justify-center text-center">
                                                 <i className="fas fa-gavel mb-1 text-lg"></i>
-                                                Tax Audit / Lawsuit / Divorce<br/>(เสียเงินสด 50%)
+                                                Tax Audit/Lawsuit/Divorce<br/>(เสียเงินสด 50%)
                                             </button>
 
                                             <button onClick={handleFtMaintenance} className="bg-blue-50 hover:bg-blue-100 text-blue-800 font-bold py-3 px-4 rounded border border-blue-200 text-xs shadow-sm flex flex-col items-center justify-center text-center">
@@ -1379,8 +1504,13 @@
                                                 <ul className="space-y-3">
                                                     {gameState.fastTrack.businesses.map(b => (
                                                         <li key={b.id} className="bg-slate-50 border p-4 rounded-lg flex justify-between items-center">
-                                                            <div><div className="font-bold">{b.name}</div><div className="text-xs text-slate-500">ซื้อมา: {formatMoney(b.cost)}</div></div>
-                                                            <div className="font-black text-emerald-600 text-lg">+{formatMoney(b.cashflow)}</div>
+                                                            <div>
+                                                                <div className="font-bold">{b.name}</div>
+                                                                <div className="text-xs text-slate-500">ซื้อมา: {formatMoney(b.cost)}</div>
+                                                            </div>
+                                                            <div className="flex flex-col items-end">
+                                                                <div className="font-black text-emerald-600 text-lg">+{formatMoney(b.cashflow)}</div>
+                                                            </div>
                                                         </li>
                                                     ))}
                                                 </ul>
@@ -1392,12 +1522,6 @@
                             </div>
                         )}
                         
-                        {hasProfession && gameState.fastTrack.isActive && !hasWonGame && (
-                            <div className="mt-8 bg-slate-800 text-white p-4 rounded-xl text-center font-bold">
-                                <i className="fas fa-lock text-amber-400 mr-2"></i> ข้อมูลสนามแข่งหนูถูกแช่แข็งแล้ว (คุณอยู่บนลู่ทางด่วน)
-                            </div>
-                        )}
-
                     </main>
                 </div>
             );
